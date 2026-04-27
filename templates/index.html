@@ -3,286 +3,281 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Run Logger</title>
+  <title>Runkiki</title>
   <style>
     :root {
-      --strava: #FC4C02;
-      --text: #111;
-      --muted: #5c5c5c;
-      --line: #e6e6e6;
+      --strava: #fc4c02;
+      --text: #0a0a0a;
+      --muted: #636366;
+      --line: #e5e5ea;
+      --line-strong: #c7c7cc;
       --card: #fff;
-      --shadow: 0 2px 24px rgba(0,0,0,.08);
-      --radius: 12px;
+      --page-bg: #f2f2f7;
+      --shadow: 0 1px 3px rgba(0,0,0,.08);
+      --radius: 10px;
+      --field-inner: 16px;
     }
     * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
     body {
       margin: 0;
-      font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      font: 16px/1.47 -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, "Segoe UI", Roboto, sans-serif;
       color: var(--text);
-      background: #fafafa;
+      background: var(--page-bg);
       min-height: 100vh;
+      min-height: 100dvh;
+      padding-bottom: max(1rem, env(safe-area-inset-bottom, 0));
     }
     .page {
-      max-width: 480px;
+      max-width: 375px;
       margin: 0 auto;
-      padding: 1.25rem 1rem 3rem;
+      padding: 0.5rem 0.75rem 2.5rem;
     }
-    .bar {
+    @media (min-width: 400px) {
+      .page { max-width: 480px; }
+    }
+    .app-bar {
       height: 44px;
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      color: var(--muted);
-      font-size: 0.875rem;
+      justify-content: center;
+      color: #1c1c1e;
+      font-size: 13px;
+      font-weight: 600;
     }
-    h1 {
-      font-size: 1.75rem;
-      font-weight: 700;
-      margin: 0.25rem 0 0.25rem;
-      letter-spacing: -0.02em;
+    .hero { text-align: center; margin-bottom: 1.1rem; }
+    .hero h1 {
+      font-size: 2.05rem;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+      margin: 0.35rem 0 0.1rem;
+      line-height: 1.12;
     }
-    .sub {
+    .hero .sub {
       color: var(--muted);
       font-size: 0.95rem;
-      margin: 0 0 1.25rem;
+      font-weight: 400;
+      margin: 0;
     }
-    .stack {
+    .form-card, .form-card--panel {
       background: var(--card);
       border-radius: var(--radius);
       box-shadow: var(--shadow);
-      padding: 0.25rem 0 0.5rem;
+      overflow: hidden;
     }
-    .row {
-      padding: 0.75rem 1rem 0.65rem;
-      border-bottom: 1px solid var(--line);
-    }
-    .row:last-of-type { border-bottom: 0; }
+    .form-card { margin-bottom: 0.5rem; }
+    .field + .field { border-top: 1px solid var(--line); }
+    .field .inner { padding: 0 var(--field-inner) 10px; }
     .row-label {
       display: block;
-      font-size: 0.75rem;
+      font-size: 11px;
       font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.06em;
       color: var(--muted);
-      margin-bottom: 0.35rem;
+      padding: 10px 0 2px;
     }
-    .row-inner {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.5rem;
-    }
-    @media (max-width: 380px) {
-      .row-inner { grid-template-columns: 1fr; }
-    }
-    .row input[type="date"],
-    .row input[type="time"],
-    .row input[type="text"],
-    .row textarea,
-    .row input[type="number"] {
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem 0.75rem; }
+    @media (max-width: 340px) { .row-2 { grid-template-columns: 1fr; } }
+    .field input[type="date"],
+    .field input[type="time"],
+    .field input[type="text"] {
       width: 100%;
-      border: 1px solid #e0e0e0;
-      border-radius: 10px;
-      padding: 0.5rem 0.65rem;
+      border: none;
+      background: transparent;
       font: inherit;
+      font-size: 1rem;
       color: var(--text);
+      padding: 0.15rem 0 0.3rem;
+      border-bottom: 1px solid var(--line-strong);
+      border-radius: 0;
     }
-    .row textarea { min-height: 5rem; resize: vertical; }
-    .ex-row .row-inner { grid-template-columns: 1fr; }
-    .slider-wrap { padding-top: 0.35rem; }
-    input[type="range"] {
-      width: 100%;
-      accent-color: var(--strava);
+    .field input:focus { outline: none; border-bottom-color: var(--strava); }
+    .field.text-row .inner { padding-top: 0; }
+    .field.text-row .row-label { padding-bottom: 2px; }
+    .field.text-row input { margin-top: 0.1rem; }
+    .ex-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px var(--field-inner) 0;
     }
-    .ex-val { font-size: 0.9rem; color: var(--muted); margin-top: 0.25rem; }
+    .ex-head .row-label { padding: 0; }
+    .incl-lab { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 0.35rem; }
+    .ex-body { padding: 4px var(--field-inner) 10px; }
+    .slider-wrap { padding: 0.15rem 0; }
+    input[type="range"] { width: 100%; height: 28px; accent-color: var(--strava); }
+    .ex-val { font-size: 12px; color: var(--muted); margin-top: 0.1rem; }
+    .field-upload .row-label { padding: 10px var(--field-inner) 2px; }
     .upload {
-      border: 1.5px dashed #ccc;
-      border-radius: 12px;
-      padding: 1rem;
+      border: 1.5px dashed #c5c5c5;
+      border-radius: 10px;
+      margin: 6px var(--field-inner) 12px;
+      padding: 0.75rem 0.65rem 0.7rem;
       text-align: center;
-      background: #fbfbfb;
+      background: #fafafa;
     }
-    .upload p { margin: 0.25rem 0; }
-    .upload .hint { font-size: 0.8rem; color: var(--muted); }
-    .upload .btn-ghost {
+    .upload .t1 { font-size: 0.9rem; font-weight: 500; margin: 0 0 0.15rem; }
+    .upload .hint { font-size: 0.78rem; color: var(--muted); margin: 0 0 0.5rem; }
+    .btn-ghost {
       display: inline-block;
-      margin-top: 0.5rem;
+      min-width: 6.6rem;
       background: #fff;
-      border: 1px solid var(--line);
+      border: 1px solid #d0d0d0;
       border-radius: 8px;
-      padding: 0.45rem 1rem;
+      padding: 0.4rem 0.9rem;
       font: inherit;
       font-size: 0.9rem;
+      font-weight: 500;
       cursor: pointer;
+      color: #007aff;
     }
-    .upload .btn-ghost:hover { background: #f5f5f5; }
     .file-in { display: none; }
-    .file-list { margin-top: 0.75rem; text-align: left; }
-    .file-item {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.5rem 0;
-      border-top: 1px solid var(--line);
-    }
-    .file-item:first-child { border-top: 0; }
-    .file-thumb { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; background: #eee; }
+    .file-list { margin: 0.4rem 0.2rem 0; text-align: left; }
+    .file-item { display: flex; align-items: center; gap: 0.45rem; padding: 0.4rem 0; border-top: 1px solid #eee; }
+    .file-item:first-of-type { border-top: 0; }
+    .file-thumb { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; background: #e8e8ed; flex-shrink: 0; }
     .file-meta { flex: 1; min-width: 0; }
-    .file-name { font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .file-size { font-size: 0.75rem; color: var(--muted); }
+    .file-name { font-size: 0.86rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-size { font-size: 11px; color: var(--muted); }
     .file-remove {
-      background: none; border: 0; color: var(--muted); font-size: 1.2rem; cursor: pointer; padding: 0.25rem;
+      background: none; border: 0; color: #8e8e93; font-size: 1.25rem; line-height: 1;
+      cursor: pointer; padding: 0.15rem; flex-shrink: 0; width: 1.5rem; height: 1.5rem; display: flex; align-items: center; justify-content: center;
     }
-    .listgroup {
-      margin-top: 1.25rem;
-    }
-    .listgroup-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 0.3rem;
-    }
-    .listgroup-head h2 { font-size: 1rem; font-weight: 600; margin: 0; }
-    .tag {
-      background: #f0f0f0;
-      color: var(--muted);
-      font-size: 0.7rem;
-      font-weight: 600;
-      padding: 0.2rem 0.5rem;
-      border-radius: 6px;
-    }
-    .listgroup p.lead { font-size: 0.85rem; color: var(--muted); margin: 0 0 0.6rem; }
-    .list {
-      background: var(--card);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-    }
-    .li {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0.85rem 1rem;
-      border-bottom: 1px solid var(--line);
-      font-size: 0.95rem;
-    }
+    .listgroup { margin-top: 0.9rem; }
+    .listgroup-head { display: flex; align-items: center; justify-content: space-between; margin: 0 0.1rem 0.15rem; }
+    .listgroup-head h2 { font-size: 0.95rem; font-weight: 600; margin: 0; }
+    .tag { background: #e8e8ed; color: #3a3a3c; font-size: 0.7rem; font-weight: 600; padding: 0.2rem 0.45rem; border-radius: 4px; }
+    .listgroup .lead { font-size: 0.82rem; color: var(--muted); margin: 0 0.1rem 0.4rem; line-height: 1.4; }
+    .list { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+    .li { border-bottom: 1px solid var(--line); }
     .li:last-child { border-bottom: 0; }
-    .switch { width: 48px; height: 28px; }
+    .li-body { padding: 0.65rem 1rem 0.7rem; }
+    .li-row {
+      display: flex; flex-direction: row; align-items: center; justify-content: space-between;
+      padding: 0.5rem 1rem; min-height: 2.8rem; gap: 0.5rem;
+    }
+    .li-row .meta .lead2 { font-size: 0.8rem; color: var(--muted); margin: 0.1rem 0 0; line-height: 1.2; }
+    .li-row .row-title { font-size: 0.88rem; font-weight: 600; }
+    .li textarea {
+      width: 100%;
+      border: 1px solid #e0e0e5;
+      border-radius: 8px;
+      padding: 0.5rem 0.6rem;
+      font: inherit; resize: vertical; min-height: 4.25rem;
+    }
+    .commute-cb { width: 1.1rem; height: 1.1rem; accent-color: var(--strava); }
     .btn-log {
       width: 100%;
-      margin-top: 1.25rem;
-      padding: 0.85rem 1rem;
+      margin: 1.05rem 0 0;
+      padding: 0.8rem 1rem;
       background: var(--strava);
       color: #fff;
-      font: inherit;
-      font-weight: 600;
-      border: 0;
-      border-radius: 10px;
-      cursor: pointer;
-      box-shadow: 0 2px 8px rgba(252, 76, 2, 0.35);
+      font: inherit; font-size: 1.02rem; font-weight: 600;
+      border: 0; border-radius: 10px; cursor: pointer; min-height: 3.05rem;
+      box-shadow: 0 1px 4px rgba(252, 76, 2, 0.28);
     }
-    .btn-log:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-log:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn-log .spin {
-      display: none;
-      width: 1.1em;
-      height: 1.1em;
-      border: 2px solid #fff4;
-      border-top-color: #fff;
-      border-radius: 50%;
-      vertical-align: -0.2em;
-      margin-right: 0.4rem;
-      animation: rl 0.7s linear infinite;
+      display: none; width: 1.05em; height: 1.05em;
+      border: 2px solid rgba(255,255,255,0.35);
+      border-top-color: #fff; border-radius: 50%;
+      vertical-align: -0.12em; margin-right: 0.35rem;
+      animation: rl 0.75s linear infinite;
     }
     @keyframes rl { to { transform: rotate(360deg); } }
     .btn-log.load .spin { display: inline-block; }
-    .view { }
     .hidden { display: none !important; }
-    .panel-ok, .panel-err {
-      text-align: center;
-      padding: 2rem 1.25rem;
-    }
     .ok-icon {
-      width: 48px; height: 48px; margin: 0 auto 0.75rem;
+      width: 48px; height: 48px; margin: 0.35rem auto 0.5rem;
       border-radius: 50%;
-      background: #e8f5e9;
-      color: #1b5e20;
+      background: #e3f2e5; color: #1b5e20;
       display: flex; align-items: center; justify-content: center;
-      font-size: 1.5rem; font-weight: 700;
+      font-size: 1.4rem; font-weight: 700; line-height: 1;
     }
-    .panel-ok h2 { font-size: 1.25rem; margin: 0.5rem 0; }
-    .stat { color: var(--muted); font-size: 0.95rem; margin: 0.4rem 0; }
-    .actions { display: flex; gap: 0.5rem; margin-top: 1.25rem; }
+    .summary-title { font-size: 1.12rem; font-weight: 600; margin: 0 0 0.2rem; color: #1c1c1e; }
+    .summary-copy { color: var(--muted); font-size: 0.9rem; line-height: 1.4; margin: 0.12rem 0.25rem; }
+    .actions { display: flex; gap: 0.45rem; margin-top: 1.05rem; }
     .actions a, .actions button {
-      flex: 1;
-      text-align: center;
-      padding: 0.7rem 0.75rem;
-      border-radius: 10px;
-      font: inherit;
-      font-size: 0.95rem;
-      cursor: pointer;
-      text-decoration: none;
+      flex: 1; min-height: 50px; display: flex; align-items: center; justify-content: center;
+      text-align: center; padding: 0.45rem; border-radius: 9px;
+      font: inherit; font-size: 0.92rem; font-weight: 600; cursor: pointer; text-decoration: none;
     }
-    .actions .pri {
-      background: var(--strava);
-      color: #fff;
-      border: 0;
-    }
-    .actions .sec {
-      background: #f3f3f3;
-      color: var(--text);
-      border: 0;
-    }
-    .panel-err p { color: #a30; margin: 0.5rem 0 0; }
+    .actions .pri { background: #fff; color: var(--strava); border: 1.5px solid var(--strava); }
+    .actions .sec { background: #e8e8ed; color: #1c1c1e; border: 0; }
+    .panel-ok, .pan-load { text-align: center; padding: 0.2rem 0.25rem 0.5rem; }
+    .err-title { color: #b00020; }
+    @keyframes pulsedot { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+    .load-ellipsis { font-size: 0.6rem; letter-spacing: 0.15em; color: var(--strava); animation: pulsedot 1.2s ease-in-out infinite; }
   </style>
 </head>
 <body>
   <div class="page">
     <div class="view" id="formView">
-      <div class="bar" aria-hidden="true"><span>Run Logger</span></div>
-      <h1>Run Logger</h1>
-      <p class="sub">Log your run</p>
+      <header class="app-bar" aria-label="app">Runkiki</header>
+      <div class="hero">
+        <h1>🐺 Runkiki</h1>
+        <p class="sub">Log your run</p>
+      </div>
 
       <form id="runForm" novalidate>
-        <div class="stack" aria-label="Time range">
-          <div class="row">
-            <span class="row-label">Start</span>
-            <div class="row-inner">
-              <div>
-                <label for="start_date" class="sr-only">Start date</label>
-                <input type="date" name="start_date" id="start_date" required />
-              </div>
-              <div>
-                <label for="start_time" class="sr-only">Start time</label>
-                <input type="time" name="start_time" id="start_time" required step="1" />
-              </div>
-            </div>
-          </div>
-          <div class="row">
-            <span class="row-label">End</span>
-            <div class="row-inner">
-              <div>
-                <label for="end_date" class="sr-only">End date</label>
-                <input type="date" name="end_date" id="end_date" required />
-              </div>
-              <div>
-                <label for="end_time" class="sr-only">End time</label>
-                <input type="time" name="end_time" id="end_time" required step="1" />
+        <div class="form-card" aria-label="Run time and track">
+          <div class="field">
+            <div class="inner">
+              <span class="row-label">Start</span>
+              <div class="row-2">
+                <div>
+                  <label for="start_date" class="sr-only">Date</label>
+                  <input type="date" name="start_date" id="start_date" required />
+                </div>
+                <div>
+                  <label for="start_time" class="sr-only">Time</label>
+                  <input type="time" name="start_time" id="start_time" required step="1" />
+                </div>
               </div>
             </div>
           </div>
-        </div>
-
-        <div class="stack" style="margin-top:0.75rem" aria-label="Run details">
-          <div class="row">
-            <span class="row-label">Activity name</span>
-            <input name="activity_name" id="activity_name" type="text" placeholder="Morning run" autocomplete="off" />
-          </div>
-          <div class="row ex-row">
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem">
-              <span class="row-label" style="margin: 0">Perceived exertion</span>
-              <label style="font-size: 0.85rem; color: var(--muted)"><input type="checkbox" id="inclEx" /> Set</label>
+          <div class="field">
+            <div class="inner">
+              <span class="row-label">End</span>
+              <div class="row-2">
+                <div>
+                  <label for="end_date" class="sr-only">Date</label>
+                  <input type="date" name="end_date" id="end_date" required />
+                </div>
+                <div>
+                  <label for="end_time" class="sr-only">Time</label>
+                  <input type="time" name="end_time" id="end_time" required step="1" />
+                </div>
+              </div>
             </div>
-            <div class="slider-wrap">
-              <input type="range" id="ex" min="1" max="10" value="5" />
-              <div class="ex-val" id="exLabel">5 / 10</div>
+          </div>
+          <div class="field text-row">
+            <div class="inner">
+              <span class="row-label">Activity name</span>
+              <input name="activity_name" id="activity_name" type="text" placeholder="Morning run" autocomplete="off" />
+            </div>
+          </div>
+          <div class="field" style="border-top:0">
+            <div class="ex-head">
+              <span class="row-label" style="margin:0">Perceived exertion</span>
+              <label class="incl-lab"><input type="checkbox" id="inclEx" /> Set</label>
+            </div>
+            <div class="ex-body">
+              <div class="slider-wrap">
+                <input type="range" id="ex" min="1" max="10" value="5" />
+                <div class="ex-val" id="exLabel">5 / 10</div>
+              </div>
+            </div>
+          </div>
+          <div class="field field-upload" style="border-top:0">
+            <span class="row-label" style="padding-top:4px">Photo</span>
+            <div class="upload" id="drop" role="presentation">
+              <p class="t1">Upload a photo</p>
+              <p class="hint">JPEG, PNG accepted up to 50 MB</p>
+              <button class="btn-ghost" type="button" id="pickBtn">Browse file</button>
+              <input class="file-in" type="file" name="photos" id="fileIn" accept="image/jpeg,image/png,.jpg,.jpeg,.png" multiple />
+              <div class="file-list" id="fileList" hidden></div>
             </div>
           </div>
         </div>
@@ -292,33 +287,19 @@
             <h2>Details</h2>
             <span class="tag" id="exTag">Optional</span>
           </div>
-          <p class="lead">Add notes, a photo, or mark a commute — all optional.</p>
+          <p class="lead">Add notes or mark a commute — all optional.</p>
           <div class="list">
-            <div class="li" style="flex-direction: column; align-items: stretch; gap: 0.4rem; padding: 0.9rem 1rem;">
-              <div style="display: flex; justify-content: space-between; align-items: start;">
-                <div>
-                  <div class="row-label" style="margin:0 0 0.25rem">Description</div>
-                </div>
-              </div>
+            <div class="li li-body">
+              <span class="row-label" style="padding:0 0 4px; margin-top:0">Description</span>
               <label for="description" class="sr-only">Description</label>
-              <textarea name="description" id="description" placeholder="Add notes for your run…" rows="3" style="width:100%"></textarea>
+              <textarea name="description" id="description" placeholder="Add notes for your run…" rows="3"></textarea>
             </div>
-            <div class="li" style="flex-direction: column; align-items: stretch; gap: 0.4rem; padding: 0.5rem 1rem 0.9rem">
-              <div class="row-label" style="margin:0.35rem 0 0.25rem">Photo</div>
-              <div class="upload" id="drop">
-                <p>Upload a photo</p>
-                <p class="hint">JPG, PNG, up to 50&nbsp;MB</p>
-                <button class="btn-ghost" type="button" id="pickBtn">Browse</button>
-                <input class="file-in" type="file" name="photos" id="fileIn" accept="image/jpeg,image/png,.jpg,.jpeg,.png" multiple />
-                <div class="file-list" id="fileList" hidden></div>
+            <div class="li li-row">
+              <div class="meta">
+                <div class="row-title">Commute</div>
+                <div class="lead2">Mark as commute in Strava</div>
               </div>
-            </div>
-            <div class="li" style="padding: 0.6rem 1rem;">
-              <div>
-                <div class="row-label" style="margin:0; text-transform: none; font-weight: 500">Commute</div>
-                <div class="hint" style="font-size: 0.8rem; color: var(--muted); margin-top:0.1rem">Mark as commute in Strava</div>
-              </div>
-              <input type="checkbox" name="commute" class="switch" value="1" id="commute" />
+              <input type="checkbox" class="commute-cb" name="commute" value="1" id="commute" />
             </div>
           </div>
         </div>
@@ -331,63 +312,65 @@
     </div>
 
     <div class="view hidden" id="loadingView" role="status" aria-live="polite">
-      <div class="stack panel-ok">
-        <p style="margin:0.5rem 0; font-size:0.9rem; color:var(--muted)">Run Logger</p>
-        <div class="ok-icon" style="background:#fff3e0;color:var(--strava)">…</div>
-        <h2>Logging your run…</h2>
-        <p class="stat">This can take a few seconds while we talk to your tracker and Strava.</p>
+      <header class="app-bar">Runkiki</header>
+      <div class="hero" style="margin-top:0.1rem">
+        <h1>🐺 Runkiki</h1>
+        <p class="sub">Log your run</p>
+      </div>
+      <div class="form-card--panel" style="margin-top:0.3rem; padding:1rem 0.6rem">
+        <p class="pan-load" style="font-size:0.78rem; color:var(--muted); margin:0.2rem 0 0.4rem">Runkiki</p>
+        <div class="ok-icon" style="background:#ffefe6;background-image:none"><span class="load-ellipsis">…</span></div>
+        <h2 class="summary-title" style="margin:0.35rem 0 0.25rem">Logging your run…</h2>
+        <p class="summary-copy" style="font-size:0.88rem; max-width:17rem; margin:0 auto">A few seconds while we pull positions and post to Strava.</p>
       </div>
     </div>
 
     <div class="view hidden" id="okView" aria-live="polite">
-      <div class="bar"><span>Run Logger</span></div>
-      <h1>Run Logger</h1>
-      <p class="sub">Log your run</p>
-      <div class="stack">
+      <header class="app-bar">Runkiki</header>
+      <div class="hero" style="margin-top:0.1rem">
+        <h1>🐺 Runkiki</h1>
+        <p class="sub">Log your run</p>
+      </div>
+      <div class="form-card" style="margin-top:0.3rem; padding:0.35rem 0 0.2rem">
         <div class="panel-ok">
-          <div class="ok-icon">✓</div>
-          <h2>Run saved</h2>
-          <p class="stat" id="okStat"></p>
-          <p class="stat" id="okSub"></p>
+          <div class="ok-icon" aria-hidden="true">✓</div>
+          <h2 class="summary-title">Run saved</h2>
+          <p class="summary-copy" id="okStat"></p>
+          <p class="summary-copy" id="okSub" style="margin-top:0"></p>
           <div class="actions">
             <a class="pri" id="okLink" href="#" target="_blank" rel="noopener">View on Strava</a>
             <button class="sec" type="button" id="okAnother">Log another</button>
           </div>
-          <p class="stat" id="okNote" style="text-align:left; margin-top:0.8rem; font-size:0.8rem" hidden></p>
+          <p class="summary-copy" id="okNote" style="text-align:left; max-width:18.5rem; margin:0.6rem auto 0; font-size:0.78rem" hidden></p>
         </div>
       </div>
     </div>
 
     <div class="view hidden" id="errView" role="alert" aria-live="assertive">
-      <div class="bar"><span>Run Logger</span></div>
-      <h1>Run Logger</h1>
-      <p class="sub">Log your run</p>
-      <div class="stack">
-        <div class="panel-err">
-          <h2>Couldn’t log that run</h2>
-          <p id="errMsg" style="color: var(--text);">Something went wrong.</p>
-          <div class="actions" style="margin-top:1rem">
-            <button class="pri" type="button" id="errRetry">Back to form</button>
-          </div>
-        </div>
+      <header class="app-bar">Runkiki</header>
+      <div class="hero" style="margin-top:0.1rem">
+        <h1>🐺 Runkiki</h1>
+        <p class="sub">Log your run</p>
+      </div>
+      <div class="form-card" style="margin-top:0.3rem; padding:0.75rem 0.65rem 0.6rem; text-align:center">
+        <h2 class="err-title summary-title" style="color:#b00020; margin:0.4rem 0 0.35rem">Couldn’t log that run</h2>
+        <p id="errMsg" style="color: var(--text); margin:0.25rem 0 0.55rem; font-size:0.9rem; line-height:1.4">Something went wrong.</p>
+        <button class="btn-log" type="button" id="errRetry" style="max-width:100%; margin:0.4rem 0 0; background:#e8e8ed; color:var(--text); box-shadow:none; font-size:0.95rem">Back to form</button>
       </div>
     </div>
   </div>
   <style>
-    .sr-only {
-      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0);
-      border: 0; white-space: nowrap;
-    }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; white-space: nowrap; }
   </style>
   <script>
 (function() {
   const FIFTY_MB = 50 * 1024 * 1024;
   const d = new Date();
   const isoD = d.toISOString().slice(0, 10);
-  const tEl = (id) => document.getElementById(id);
+  const tEl = function(id) { return document.getElementById(id); };
   const startDate = tEl('start_date');
-  const startTime = tEl('start_time');
   const endDate = tEl('end_date');
+  const startTime = tEl('start_time');
   const endTime = tEl('end_time');
   const ex = tEl('ex');
   const exLabel = tEl('exLabel');
@@ -401,7 +384,6 @@
   const okView = tEl('okView');
   const errView = tEl('errView');
   const logBtn = tEl('logBtn');
-  const spinner = tEl('spinner');
   const logLabel = tEl('logLabel');
   const okLink = tEl('okLink');
   const okStat = tEl('okStat');
@@ -411,76 +393,81 @@
   const errMsg = tEl('errMsg');
   const errRetry = tEl('errRetry');
   const drop = tEl('drop');
+  const spinner = tEl('spinner');
+  var fileStore = new DataTransfer();
 
-  let fileStore = new DataTransfer();
-
-  [startDate, endDate, startTime, endTime].forEach(x => { if (x) x.setAttribute('required', ''); });
+  [startDate, endDate, startTime, endTime].forEach(function(x) { if (x) x.setAttribute('required', ''); });
   if (startDate) startDate.value = isoD;
   if (endDate) endDate.value = isoD;
   if (startTime) startTime.value = '08:00:00';
   if (endTime) endTime.value = '09:00:00';
 
-  ex.addEventListener('input', () => {
-    exLabel.textContent = ex.value + ' / 10';
-  });
+  ex.addEventListener('input', function() { exLabel.textContent = ex.value + ' / 10'; });
   exLabel.textContent = ex.value + ' / 10';
   exTag.textContent = '1–10';
 
-  pickBtn.addEventListener('click', () => fileIn.click());
-  fileIn.addEventListener('change', (e) => { addFiles(e.target.files); fileIn.value = ''; });
-  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach((ev) => {
-    drop.addEventListener(ev, (e) => { e.preventDefault(); e.stopPropagation(); });
+  pickBtn.addEventListener('click', function() { fileIn.click(); });
+  fileIn.addEventListener('change', function(e) { addFiles(e.target.files); fileIn.value = ''; });
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(function(ev) {
+    drop.addEventListener(ev, function(e) { e.preventDefault(); e.stopPropagation(); });
   });
-  drop.addEventListener('drop', (e) => { addFiles(e.dataTransfer && e.dataTransfer.files); });
+  drop.addEventListener('drop', function(e) { if (e.dataTransfer) addFiles(e.dataTransfer.files); });
 
   function addFiles(flist) {
     if (!flist || !flist.length) return;
-    for (let i = 0; i < flist.length; i++) {
-      const f = flist[i];
-      const ok = /\.(jpe?g|png)$/i.test(f.name) || f.type === "image/jpeg" || f.type === "image/png";
+    for (var i = 0; i < flist.length; i++) {
+      var f = flist[i];
+      var ok = /\.(jpe?g|png)$/i.test(f.name) || f.type === 'image/jpeg' || f.type === 'image/png';
       if (!ok) continue;
-      if (f.size > FIFTY_MB) { alert('Each photo must be 50MB or under.'); continue; }
+      if (f.size > FIFTY_MB) { window.alert('Each photo must be 50MB or under.'); continue; }
       fileStore.items.add(f);
     }
     renderFileList();
   }
   function renderFileList() {
     fileList.innerHTML = '';
-    const n = fileStore.files.length;
+    var n = fileStore.files.length;
     if (!n) { fileList.hidden = true; return; }
     fileList.hidden = false;
-    for (let i = 0; i < n; i++) {
-      const f = fileStore.files[i];
-      const row = document.createElement('div');
-      row.className = 'file-item';
-      const img = document.createElement('img');
-      img.className = 'file-thumb';
-      if (f.type && f.type.startsWith('image/')) {
-        const u = URL.createObjectURL(f);
-        img.src = u;
-        img.onload = () => { URL.revokeObjectURL(u); };
-      }
-      const m = document.createElement('div');
-      m.className = 'file-meta';
-      m.innerHTML = '<div class="file-name"></div><div class="file-size"></div>';
-      m.querySelector('.file-name').textContent = f.name;
-      m.querySelector('.file-size').textContent = (f.size / 1024 / 1024).toFixed(1) + ' MB';
-      const rm = document.createElement('button');
-      rm.type = 'button';
-      rm.className = 'file-remove';
-      rm.setAttribute('aria-label', 'Remove ' + f.name);
-      rm.textContent = '×';
-      const idx = i;
-      rm.addEventListener('click', () => { removeFile(idx); });
-      row.appendChild(img);
-      row.appendChild(m);
-      row.appendChild(rm);
-      fileList.appendChild(row);
+    for (var i = 0; i < n; i++) {
+      (function(i) {
+        var f = fileStore.files[i];
+        var row = document.createElement('div');
+        row.className = 'file-item';
+        var img = document.createElement('img');
+        img.className = 'file-thumb';
+        if (f.type && f.type.indexOf('image/') === 0) {
+          var u = URL.createObjectURL(f);
+          img.src = u;
+          img.onload = function() { URL.revokeObjectURL(u); };
+        }
+        var m = document.createElement('div');
+        m.className = 'file-meta';
+        var fn = document.createElement('div');
+        fn.className = 'file-name';
+        fn.textContent = f.name;
+        var fsz = document.createElement('div');
+        fsz.className = 'file-size';
+        var mb = (f.size / 1024 / 1024).toFixed(1);
+        fsz.textContent = mb + ' MB of ' + mb + ' MB •';
+        m.appendChild(fn);
+        m.appendChild(fsz);
+        var rm = document.createElement('button');
+        rm.type = 'button';
+        rm.className = 'file-remove';
+        rm.setAttribute('aria-label', 'Remove ' + f.name);
+        rm.textContent = '\u00D7';
+        rm.addEventListener('click', function() { removeFile(i); });
+        row.appendChild(img);
+        row.appendChild(m);
+        row.appendChild(rm);
+        fileList.appendChild(row);
+      })(i);
     }
   }
   function removeFile(index) {
-    const dt = new DataTransfer();
-    for (let i = 0; i < fileStore.files.length; i++) {
+    var dt = new DataTransfer();
+    for (var i = 0; i < fileStore.files.length; i++) {
       if (i !== index) dt.items.add(fileStore.files[i]);
     }
     fileStore = dt;
@@ -488,35 +475,35 @@
   }
 
   function show(id) {
-    [formView, loadingView, okView, errView].forEach((v) => v && v.classList.add('hidden'));
-    const el = id === 'form' ? formView : (id === 'load' ? loadingView : (id === 'ok' ? okView : errView));
+    [formView, loadingView, okView, errView].forEach(function(v) { if (v) v.classList.add('hidden'); });
+    var el = id === 'form' ? formView : (id === 'load' ? loadingView : (id === 'ok' ? okView : errView));
     if (el) el.classList.remove('hidden');
   }
   function fmtDuration(secs) {
-    const s = Math.max(0, Math.floor(secs | 0));
-    const m = Math.floor(s / 60) % 60;
-    const h = Math.floor(s / 3600);
-    const sec = s % 60;
+    var s = Math.max(0, Math.floor(secs | 0));
+    var m = Math.floor(s / 60) % 60;
+    var h = Math.floor(s / 3600);
+    var sec = s % 60;
     if (h) return h + 'h ' + m + 'm ' + sec + 's';
     if (m) return m + 'm ' + sec + 's';
     return sec + 's';
   }
   function fmtKm(m) { return (m / 1000).toFixed(2) + ' km'; }
 
-  form.addEventListener('submit', async (e) => {
+  form.addEventListener('submit', async function(e) {
     e.preventDefault();
     if (!form.reportValidity()) return;
-    const fd = new FormData();
+    var fd = new FormData();
     fd.append('start_date', startDate.value);
     fd.append('start_time', startTime.value);
     fd.append('end_date', endDate.value);
     fd.append('end_time', endTime.value);
-    const an = tEl('activity_name').value.trim() || 'Run';
+    var an = tEl('activity_name').value.trim() || 'Run';
     fd.append('activity_name', an);
     if (tEl('description') && tEl('description').value) fd.append('description', tEl('description').value);
     if (tEl('commute') && tEl('commute').checked) fd.append('commute', '1');
     if (tEl('inclEx') && tEl('inclEx').checked) fd.append('perceived_exertion', ex.value);
-    for (let i = 0; i < fileStore.files.length; i++) {
+    for (var i = 0; i < fileStore.files.length; i++) {
       fd.append('photos', fileStore.files[i], fileStore.files[i].name);
     }
     logBtn.disabled = true;
@@ -524,8 +511,8 @@
     logLabel.textContent = 'Logging your run…';
     show('load');
     try {
-      const r = await fetch('/api/log-run', { method: 'POST', body: fd, credentials: 'same-origin' });
-      const j = await r.json().catch(() => ({}));
+      var r = await fetch('/api/log-run', { method: 'POST', body: fd, credentials: 'same-origin' });
+      var j = await r.json().catch(function() { return {}; });
       if (r.status === 401) { window.location.href = '/login'; return; }
       if (!r.ok || j.error) {
         show('err');
@@ -536,7 +523,7 @@
         okLink.href = j.strava_url || 'https://www.strava.com/dashboard';
         okStat.textContent = 'Distance: ' + fmtKm(j.distance_m);
         okSub.textContent = 'Duration: ' + fmtDuration(j.duration_s);
-        const notes = [];
+        var notes = [];
         if (j.update_error) notes.push(j.update_error);
         if (j.perceived_exertion_note) notes.push(j.perceived_exertion_note);
         if (j.photo_note) notes.push(j.photo_note);
@@ -555,12 +542,19 @@
       logLabel.textContent = 'Log Run';
     }
   });
-  errRetry.addEventListener('click', () => { show('form'); });
-  okAnother.addEventListener('click', () => { show('form'); form.reset();
-    startDate.value = isoD; endDate.value = isoD; startTime.value = '08:00:00'; endTime.value = '09:00:00';
-    ex.value = 5; exLabel.textContent = '5 / 10';
+  errRetry.addEventListener('click', function() { show('form'); });
+  okAnother.addEventListener('click', function() {
+    show('form');
+    form.reset();
+    startDate.value = isoD;
+    endDate.value = isoD;
+    startTime.value = '08:00:00';
+    endTime.value = '09:00:00';
+    ex.value = 5;
+    exLabel.textContent = '5 / 10';
     if (tEl('inclEx')) tEl('inclEx').checked = false;
-    fileStore = new DataTransfer(); renderFileList();
+    fileStore = new DataTransfer();
+    renderFileList();
   });
 })();
   </script>

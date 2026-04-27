@@ -253,7 +253,7 @@ def build_gpx(points: list[dict[str, float]], name: str = "Run") -> str:
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         (
-            "<gpx version='1.1' creator='Run Logger' "
+            "<gpx version='1.1' creator='Runkiki' "
             "xmlns='http://www.topografix.com/GPX/1/1' "
             "xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance' "
             "xsi:schemaLocation='http://www.topografix.com/GPX/1/1 "
@@ -740,7 +740,7 @@ def create_app() -> Flask:
         st["client_secret"] = os.environ.get("STRAVA_CLIENT_SECRET", "")
         if at and rt:
             strava_write_state(st)
-        return _ok_html("Strava is connected. You can return to the Run Logger and log a run. Copy new tokens from /tmp to Railway if needed.")
+        return _ok_html("Strava is connected. You can return to Runkiki and log a run. Copy new tokens from /tmp to Railway if needed.")
 
     @app.post("/api/log-run")
     def log_run():
@@ -904,9 +904,9 @@ def _to_epoch(s: str) -> float:
 def _ok_html(msg: str) -> str:
     return render_template_string(
         """<!doctype html><html><head><meta charset="utf-8">
-<title>Run Logger</title><body style="font:16px/1.5 system-ui;max-width:32rem;padding:2rem">
+<title>Runkiki</title><body style="font:16px/1.5 system-ui;max-width:32rem;padding:2rem">
 <p>{{ message }}</p>
-<p><a href="/">Back to Run Logger</a></p></body></html>""",
+<p><a href="/">Back to Runkiki</a></p></body></html>""",
         message=msg,
     )
 
@@ -916,7 +916,7 @@ def _login_page(err: str | None) -> str:
         """<!doctype html>
 <html><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in — Run Logger</title>
+<title>Sign in — Runkiki</title>
 <style>
 body { font: 16px/1.5 system-ui, -apple-system, sans-serif; background: #fff; color: #111; margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
 .card { max-width: 24rem; width: 100%; margin: 1.5rem; padding: 2rem; box-shadow: 0 2px 24px rgba(0,0,0,.08); border-radius: 16px; }
@@ -925,7 +925,7 @@ input { width: 100%; box-sizing: border-box; margin-bottom: 1rem; padding: 0.65r
 button { width: 100%; background: #FC4C02; color: #fff; border: none; padding: 0.75rem; border-radius: 10px; font-weight: 600; cursor: pointer; }
 h1 { font-size: 1.25rem; margin: 0 0 1rem; }
 </style></head><body>
-<div class="card"><h1>Run Logger</h1>
+<div class="card"><h1>Runkiki</h1>
 <p>Enter the app password to continue.</p>
 <form method="post">{{ e|safe }}
   <label for="password">Password</label>
