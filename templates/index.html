@@ -6,7 +6,8 @@
   <title>Runkiki</title>
   <style>
     :root {
-      --strava: #fc4c02;
+      /* Figma / iOS system accent (primary actions, focus, not Strava brand orange) */
+      --accent: #007aff;
       --text: #0a0a0a;
       --muted: #636366;
       --line: #e5e5ea;
@@ -92,7 +93,7 @@
       border-bottom: 1px solid var(--line-strong);
       border-radius: 0;
     }
-    .field input:focus { outline: none; border-bottom-color: var(--strava); }
+    .field input:focus { outline: none; border-bottom-color: var(--accent); }
     .field.text-row .inner { padding-top: 0; }
     .field.text-row .row-label { padding-bottom: 2px; }
     .field.text-row input { margin-top: 0.1rem; }
@@ -106,7 +107,7 @@
     .incl-lab { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 0.35rem; }
     .ex-body { padding: 4px var(--field-inner) 10px; }
     .slider-wrap { padding: 0.15rem 0; }
-    input[type="range"] { width: 100%; height: 28px; accent-color: var(--strava); }
+    input[type="range"] { width: 100%; height: 28px; accent-color: var(--accent); }
     .ex-val { font-size: 12px; color: var(--muted); margin-top: 0.1rem; }
     .field-upload .row-label { padding: 10px var(--field-inner) 2px; }
     .upload {
@@ -166,16 +167,16 @@
       padding: 0.5rem 0.6rem;
       font: inherit; resize: vertical; min-height: 4.25rem;
     }
-    .commute-cb { width: 1.1rem; height: 1.1rem; accent-color: var(--strava); }
+    .commute-cb { width: 1.1rem; height: 1.1rem; accent-color: var(--accent); }
     .btn-log {
       width: 100%;
       margin: 1.05rem 0 0;
       padding: 0.8rem 1rem;
-      background: var(--strava);
+      background: var(--accent);
       color: #fff;
       font: inherit; font-size: 1.02rem; font-weight: 600;
       border: 0; border-radius: 10px; cursor: pointer; min-height: 3.05rem;
-      box-shadow: 0 1px 4px rgba(252, 76, 2, 0.28);
+      box-shadow: 0 1px 4px rgba(0, 122, 255, 0.28);
     }
     .btn-log:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn-log .spin {
@@ -203,12 +204,12 @@
       text-align: center; padding: 0.45rem; border-radius: 9px;
       font: inherit; font-size: 0.92rem; font-weight: 600; cursor: pointer; text-decoration: none;
     }
-    .actions .pri { background: #fff; color: var(--strava); border: 1.5px solid var(--strava); }
+    .actions .pri { background: #fff; color: var(--accent); border: 1.5px solid var(--accent); }
     .actions .sec { background: #e8e8ed; color: #1c1c1e; border: 0; }
     .panel-ok, .pan-load { text-align: center; padding: 0.2rem 0.25rem 0.5rem; }
     .err-title { color: #b00020; }
     @keyframes pulsedot { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
-    .load-ellipsis { font-size: 0.6rem; letter-spacing: 0.15em; color: var(--strava); animation: pulsedot 1.2s ease-in-out infinite; }
+    .load-ellipsis { font-size: 0.6rem; letter-spacing: 0.15em; color: var(--accent); animation: pulsedot 1.2s ease-in-out infinite; }
   </style>
 </head>
 <body>

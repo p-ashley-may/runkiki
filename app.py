@@ -44,8 +44,8 @@ MIN_TRK_PTS = 2
 
 
 def tractive_get_token() -> str:
-    email = os.environ.get("TRACTIVE_EMAIL", "")
-    password = os.environ.get("TRACTIVE_PASSWORD", "")
+    email = os.environ.get("TRACTIVE_EMAIL", "").strip()
+    password = os.environ.get("TRACTIVE_PASSWORD", "").strip()
     if not email or not password:
         raise RuntimeError("Tractive is not configured (TRACTIVE_EMAIL / TRACTIVE_PASSWORD).")
     res = requests.post(
@@ -59,9 +59,26 @@ def tractive_get_token() -> str:
         timeout=30,
     )
     if res.status_code >= 400:
-        raise RuntimeError(
-            "Could not sign in to Tractive. Check your account email and app password, then try again."
+        msg = (
+            "Could not sign in to Tractive. Check TRACTIVE_EMAIL and TRACTIVE_PASSWORD "
+            "(Tractive app password), then try again."
         )
+        try:
+            err = res.json()
+            if isinstance(err, dict):
+                detail = err.get("message") or err.get("error") or err.get("description")
+                if detail:
+                    msg = f"Tractive auth failed (HTTP {res.status_code}): {detail}"
+                else:
+                    msg = f"Tractive auth failed (HTTP {res.status_code})."
+            elif isinstance(err, str) and err.strip():
+                msg = f"Tractive auth failed (HTTP {res.status_code}): {err.strip()}"
+            else:
+                msg = f"Tractive auth failed (HTTP {res.status_code})."
+        except Exception:
+            # Keep a stable, user-friendly fallback when response is not JSON.
+            msg = f"{msg} (HTTP {res.status_code})"
+        raise RuntimeError(msg)
     data = res.json()
     token = _dig(
         data,
@@ -922,7 +939,7 @@ body { font: 16px/1.5 system-ui, -apple-system, sans-serif; background: #fff; co
 .card { max-width: 24rem; width: 100%; margin: 1.5rem; padding: 2rem; box-shadow: 0 2px 24px rgba(0,0,0,.08); border-radius: 16px; }
 label { display: block; font-size: 0.875rem; color: #444; margin-bottom: 0.35rem; }
 input { width: 100%; box-sizing: border-box; margin-bottom: 1rem; padding: 0.65rem 0.75rem; border: 1px solid #e0e0e0; border-radius: 10px; }
-button { width: 100%; background: #FC4C02; color: #fff; border: none; padding: 0.75rem; border-radius: 10px; font-weight: 600; cursor: pointer; }
+button { width: 100%; background: #007aff; color: #fff; border: none; padding: 0.75rem; border-radius: 10px; font-weight: 600; cursor: pointer; }
 h1 { font-size: 1.25rem; margin: 0 0 1rem; }
 </style></head><body>
 <div class="card"><h1>Runkiki</h1>
