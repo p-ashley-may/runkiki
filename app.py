@@ -61,7 +61,7 @@ def _tractive_graph_headers(bearer_token: str, user_id: str) -> dict[str, str]:
         h["x-tractive-user"] = user_id
     return h
 # Bump when you need to confirm Railway deployed this revision (see GET /api/version).
-RUNKIKI_BUILD_ID = "2026-04-30.9"
+RUNKIKI_BUILD_ID = "2026-04-30.10"
 # Tractive /positions expects these query params (see aiotractive tracker.positions).
 TRACTIVE_POSITIONS_FORMAT_DEFAULT = "json_segments"
 STRAVA_OAUTH = "https://www.strava.com/oauth"
@@ -544,6 +544,30 @@ def _env_strip(key: str) -> str | None:
     return s if s else None
 
 
+def _parse_strava_expires_at(raw: str | None) -> int:
+    """Unix seconds for token expiry: plain number or ISO-8601 (e.g. 2026-04-30T17:17:08Z)."""
+    if raw is None:
+        return 0
+    s = str(raw).strip()
+    if not s:
+        return 0
+    try:
+        v = float(s)
+        if v > 1e12:
+            v /= 1000.0
+        return int(v)
+    except ValueError:
+        pass
+    try:
+        iso = s.replace("Z", "+00:00")
+        d = datetime.fromisoformat(iso)
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+        return int(d.timestamp())
+    except ValueError:
+        return 0
+
+
 def _normalize_strava_token(raw: str | None) -> str | None:
     """Strip whitespace and accidental 'Bearer ' prefix from pasted Railway tokens."""
     if raw is None:
@@ -565,16 +589,8 @@ def strava_merged_creds() -> dict[str, Any]:
         ex_v = ex_v
     if ex_v and ex_v < 1e10:
         pass
-    ex_env = os.environ.get("STRAVA_TOKEN_EXPIRES_AT", "0")
-    ex_env_v = 0
-    if ex_env:
-        try:
-            ex_env_v = int(float(ex_env))
-        except ValueError:
-            ex_env_v = 0
-    if ex_env_v and ex_env_v < 1e10:
-        pass
-    if not ex_v and ex_env_v:
+    ex_env_v = _parse_strava_expires_at(os.environ.get("STRAVA_TOKEN_EXPIRES_AT"))
+    if ex_env_v:
         ex_v = ex_env_v
     return {
         "client_id": (s.get("client_id") or _env_strip("STRAVA_CLIENT_ID")) or None,
