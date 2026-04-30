@@ -16,6 +16,7 @@ from typing import Any
 import requests
 from flask import (
     Flask,
+    current_app,
     jsonify,
     redirect,
     render_template,
@@ -782,6 +783,7 @@ def create_app() -> Flask:
         try:
             t_from, t_to = _parse_time_window()
         except ValueError as e:
+            current_app.logger.warning("log-run bad time window: %s", e)
             return jsonify(error=str(e)), 400
         name = (request.form.get("activity_name") or "").strip() or "Run"
         description = (request.form.get("description") or "").strip()
@@ -798,7 +800,9 @@ def create_app() -> Flask:
             gpx = build_gpx(npts, name=name)
             gpx_m = track_distance_m(npts)
         except Exception as e2:
-            return jsonify(error=str(e2) or "Could not load your tracker for that time range."), 400
+            msg = str(e2) or "Could not load your tracker for that time range."
+            current_app.logger.warning("log-run Tractive/GPX failed: %s", msg)
+            return jsonify(error=msg), 400
 
         try:
             up_id = strava_upload_gpx(
@@ -808,7 +812,9 @@ def create_app() -> Flask:
                 commute=travel,
             )
         except Exception as e:
-            return jsonify(error=str(e)), 400
+            msg = str(e)
+            current_app.logger.warning("log-run Strava upload failed: %s", msg)
+            return jsonify(error=msg), 400
         aid = strava_poll_upload(int(up_id))
         if not aid:
             return jsonify(
