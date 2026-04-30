@@ -30,6 +30,12 @@ from flask import (
 # ---------------------------------------------------------------------------
 TRACTIVE_TOKEN_URL = "https://graph.tractive.com/3/auth/token"
 TRACTIVE_CLIENT_ID = "625e533dc3c3b41c28a669f0"
+# Match unofficial clients (e.g. pytractive): client id goes in header, not always in JSON body.
+TRACTIVE_AUTH_HEADERS = {
+    "x-tractive-client": TRACTIVE_CLIENT_ID,
+    "Content-Type": "application/json;charset=UTF-8",
+    "Accept": "application/json, text/plain, */*",
+}
 STRAVA_OAUTH = "https://www.strava.com/oauth"
 STRAVA_API = "https://www.strava.com/api/v3"
 STRAVA_TOKENS_PATH = "/tmp/strava_tokens.json"
@@ -43,7 +49,8 @@ MIN_TRK_PTS = 2
 # ---------------------------------------------------------------------------
 
 
-def tractive_get_token() -> str:
+def tractive_get_token_and_user() -> tuple[str, str]:
+    """Return (access_token, user_id) per Tractive Graph API conventions."""
     email = os.environ.get("TRACTIVE_EMAIL", "").strip()
     password = os.environ.get("TRACTIVE_PASSWORD", "").strip()
     if not email or not password:
@@ -51,11 +58,11 @@ def tractive_get_token() -> str:
     res = requests.post(
         TRACTIVE_TOKEN_URL,
         json={
-            "client_id": TRACTIVE_CLIENT_ID,
             "grant_type": "tractive",
             "platform_email": email,
             "platform_token": password,
         },
+        headers=TRACTIVE_AUTH_HEADERS,
         timeout=30,
     )
     if res.status_code >= 400:
@@ -92,18 +99,27 @@ def tractive_get_token() -> str:
         token = data
     if not token:
         raise RuntimeError("Tractive returned a response we could not read. The service may have changed format.")
-    return str(token)
+    uid = ""
+    if isinstance(data, dict):
+        uid = str(data.get("user_id") or data.get("userId") or "").strip()
+    return str(token), uid
 
 
 def tractive_fetch_positions(tracker_id: str, t_from: int, t_to: int) -> list[dict[str, Any]]:
     if not tracker_id:
         raise RuntimeError("Tractive tracker ID is missing. Set TRACTIVE_TRACKER_ID.")
     url = f"https://graph.tractive.com/3/tracker/{tracker_id}/positions"
-    at = tractive_get_token()
+    at, user_id = tractive_get_token_and_user()
+    ph = {
+        "Authorization": f"Bearer {at}",
+        "Accept": "application/json, text/plain, */*",
+    }
+    if user_id:
+        ph["x-tractive-user"] = user_id
     res = requests.get(
         url,
         params={"from": t_from, "to": t_to},
-        headers={"Authorization": f"Bearer {at}"},
+        headers=ph,
         timeout=60,
     )
     if res.status_code == 404:
