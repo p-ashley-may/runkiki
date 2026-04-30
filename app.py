@@ -37,6 +37,8 @@ TRACTIVE_AUTH_HEADERS = {
     "Content-Type": "application/json;charset=UTF-8",
     "Accept": "application/json, text/plain, */*",
 }
+# Bump when you need to confirm Railway deployed this revision (see GET /api/version).
+RUNKIKI_BUILD_ID = "2026-04-30.2"
 STRAVA_OAUTH = "https://www.strava.com/oauth"
 STRAVA_API = "https://www.strava.com/api/v3"
 STRAVA_TOKENS_PATH = "/tmp/strava_tokens.json"
@@ -50,43 +52,70 @@ MIN_TRK_PTS = 2
 # ---------------------------------------------------------------------------
 
 
+def _tractive_auth_post(email: str, password: str, *, legacy_json_body: bool) -> requests.Response:
+    """Primary = pytractive-style (x-tractive-client + slim JSON). Legacy = client_id inside JSON only."""
+    body: dict[str, str] = {
+        "grant_type": "tractive",
+        "platform_email": email,
+        "platform_token": password,
+    }
+    if legacy_json_body:
+        body["client_id"] = TRACTIVE_CLIENT_ID
+        return requests.post(
+            TRACTIVE_TOKEN_URL,
+            json=body,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/plain, */*",
+            },
+            timeout=30,
+        )
+    return requests.post(
+        TRACTIVE_TOKEN_URL,
+        json=body,
+        headers=TRACTIVE_AUTH_HEADERS,
+        timeout=30,
+    )
+
+
+def _tractive_auth_failed_message(primary: requests.Response, secondary: requests.Response | None) -> str:
+    def one(res: requests.Response) -> str:
+        try:
+            err = res.json()
+            if isinstance(err, dict):
+                d = err.get("message") or err.get("error") or err.get("description")
+                if d:
+                    return f"HTTP {res.status_code}: {d}"
+            elif isinstance(err, str) and err.strip():
+                return f"HTTP {res.status_code}: {err.strip()}"
+        except Exception:
+            pass
+        t = (res.text or "").strip()
+        return f"HTTP {res.status_code}" + (f" — {t[:280]}" if t else "")
+
+    parts = [f"(header client id) {one(primary)}"]
+    if secondary is not None:
+        parts.append(f"(json client id) {one(secondary)}")
+    return (
+        "Tractive login failed after trying both API styles. "
+        + " ".join(parts)
+        + " Recheck TRACTIVE_EMAIL and TRACTIVE_PASSWORD in Railway (use the same password as in the Tractive app)."
+    )
+
+
 def tractive_get_token_and_user() -> tuple[str, str]:
     """Return (access_token, user_id) per Tractive Graph API conventions."""
     email = os.environ.get("TRACTIVE_EMAIL", "").strip()
     password = os.environ.get("TRACTIVE_PASSWORD", "").strip()
     if not email or not password:
         raise RuntimeError("Tractive is not configured (TRACTIVE_EMAIL / TRACTIVE_PASSWORD).")
-    res = requests.post(
-        TRACTIVE_TOKEN_URL,
-        json={
-            "grant_type": "tractive",
-            "platform_email": email,
-            "platform_token": password,
-        },
-        headers=TRACTIVE_AUTH_HEADERS,
-        timeout=30,
-    )
+    res = _tractive_auth_post(email, password, legacy_json_body=False)
     if res.status_code >= 400:
-        msg = (
-            "Could not sign in to Tractive. Check TRACTIVE_EMAIL and TRACTIVE_PASSWORD "
-            "(Tractive app password), then try again."
-        )
-        try:
-            err = res.json()
-            if isinstance(err, dict):
-                detail = err.get("message") or err.get("error") or err.get("description")
-                if detail:
-                    msg = f"Tractive auth failed (HTTP {res.status_code}): {detail}"
-                else:
-                    msg = f"Tractive auth failed (HTTP {res.status_code})."
-            elif isinstance(err, str) and err.strip():
-                msg = f"Tractive auth failed (HTTP {res.status_code}): {err.strip()}"
-            else:
-                msg = f"Tractive auth failed (HTTP {res.status_code})."
-        except Exception:
-            # Keep a stable, user-friendly fallback when response is not JSON.
-            msg = f"{msg} (HTTP {res.status_code})"
-        raise RuntimeError(msg)
+        res_alt = _tractive_auth_post(email, password, legacy_json_body=True)
+        if res_alt.status_code < 400:
+            res = res_alt
+        else:
+            raise RuntimeError(_tractive_auth_failed_message(res, res_alt))
     data = res.json()
     token = _dig(
         data,
@@ -695,7 +724,9 @@ def create_app() -> Flask:
     @app.before_request
     def _gate():
         p = (request.path or "/").rstrip() or "/"
-        if p in ("/login", "/auth", "/auth/callback", "/favicon.ico") or p.startswith("/static/"):
+        if p in ("/login", "/auth", "/auth/callback", "/favicon.ico", "/api/version") or p.startswith(
+            "/static/"
+        ):
             return None
         if session.get("authed") is not True:
             if p.startswith("/api/"):
@@ -706,6 +737,15 @@ def create_app() -> Flask:
     @app.get("/favicon.ico")
     def _fav():
         return ("", 204)
+
+    @app.get("/api/version")
+    def api_version():
+        """Public build fingerprint — open in a browser to confirm Railway deployed this revision."""
+        return jsonify(
+            app="runkiki",
+            build=os.environ.get("RUNKIKI_BUILD", RUNKIKI_BUILD_ID),
+            tractive_auth="header-json-fallback-legacy-json",
+        )
 
     @app.get("/")
     def index():
