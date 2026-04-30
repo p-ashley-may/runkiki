@@ -89,7 +89,7 @@ def _tractive_graph_headers(bearer_token: str, user_id: str) -> dict[str, str]:
         h["x-tractive-user"] = user_id
     return h
 # Bump when you need to confirm Railway deployed this revision (see GET /api/version).
-RUNKIKI_BUILD_ID = "2026-04-30.12"
+RUNKIKI_BUILD_ID = "2026-04-30.13"
 # Tractive /positions expects these query params (see aiotractive tracker.positions).
 TRACTIVE_POSITIONS_FORMAT_DEFAULT = "json_segments"
 STRAVA_OAUTH = "https://www.strava.com/oauth"
@@ -648,6 +648,8 @@ def get_valid_strava_token(force_refresh: bool = False) -> str:
     can_refresh = bool(
         c.get("refresh_token") and c.get("client_id") and c.get("client_secret")
     )
+    raw_file_at = st.get("access_token")
+    access_from_file = bool(_normalize_strava_token(str(raw_file_at) if raw_file_at else None))
 
     # region agent log
     _agent_debug_log(
@@ -662,6 +664,7 @@ def get_valid_strava_token(force_refresh: bool = False) -> str:
             "has_access": bool(c.get("access_token")),
             "has_refresh": bool(c.get("refresh_token")),
             "can_refresh": can_refresh,
+            "access_from_file": access_from_file,
             "state_has_keys": bool(st),
             "state_has_expires": st.get("expires_at") is not None,
         },
@@ -671,6 +674,8 @@ def get_valid_strava_token(force_refresh: bool = False) -> str:
     if not force_refresh and c.get("access_token") and not token_stale:
         if expiry_unknown and can_refresh:
             pass  # exchange refresh for a known-good access token
+        elif not access_from_file and can_refresh:
+            pass  # access token only from STRAVA_ACCESS_TOKEN env (no file): refresh — avoids wrong/revoked paste
         else:
             return str(c["access_token"])
 
@@ -778,6 +783,32 @@ def _strava_response_suggests_bad_token(resp: requests.Response) -> bool:
     return False
 
 
+def _strava_error_message_from_body(resp: requests.Response) -> str | None:
+    """Best-effort Strava API error text + short errors[] summary (no secrets)."""
+    try:
+        o = resp.json()
+        if not isinstance(o, dict):
+            return None
+        base = f"Strava: {o['message']}" if o.get("message") else None
+        errs = o.get("errors")
+        if isinstance(errs, list) and errs:
+            segs: list[str] = []
+            for e in errs[:6]:
+                if isinstance(e, dict):
+                    rsrc = str(e.get("resource") or "").strip()
+                    fld = str(e.get("field") or "").strip()
+                    code = str(e.get("code") or "").strip()
+                    one = ":".join(x for x in (rsrc, fld, code) if x)
+                    if one:
+                        segs.append(one)
+            if segs:
+                extra = " (" + "; ".join(segs) + ")"
+                return (base or "Strava request failed") + extra
+        return base
+    except Exception:
+        return None
+
+
 def strava_upload_gpx(
     gpx_bytes: bytes,
     *,
@@ -852,13 +883,14 @@ def strava_upload_gpx(
     # endregion
 
     if r.status_code >= 400:
-        m = f"Strava would not accept the file (HTTP {r.status_code})."
-        try:
-            o = r.json()
-            if isinstance(o, dict) and o.get("message"):
-                m = f"Strava: {o.get('message')}"
-        except Exception:
-            m = f"Strava upload failed (HTTP {r.status_code})."
+        m = _strava_error_message_from_body(r) or (
+            f"Strava upload failed (HTTP {r.status_code})."
+        )
+        if r.status_code in (401, 403):
+            m += (
+                " Open /auth?reconnect=1 in this app and approve access (needs activity:write). "
+                "If STRAVA_ACCESS_TOKEN is set in Railway, remove it so OAuth refresh supplies the token."
+            )
         raise RuntimeError(m)
     u = r.json()
     if "error" in u and u.get("error") and u.get("status", "").find("error") != -1:
@@ -1097,10 +1129,16 @@ def create_app() -> Flask:
                 500,
             )
         scope = "read,activity:read,activity:write"
+        approval = (
+            "force"
+            if (request.args.get("reconnect") or "").strip().lower() in ("1", "true", "yes", "force")
+            else "auto"
+        )
         u = (
             f"{STRAVA_OAUTH}/authorize?client_id={cid}"
             f"&redirect_uri={requests.utils.quote(ruri, safe='')}"
-            f"&response_type=code&scope={requests.utils.quote(scope)}&approval_prompt=auto"
+            f"&response_type=code&scope={requests.utils.quote(scope)}"
+            f"&approval_prompt={approval}"
         )
         return redirect(u)
 
