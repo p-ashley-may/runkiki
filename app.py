@@ -58,7 +58,9 @@ def _tractive_graph_headers(bearer_token: str, user_id: str) -> dict[str, str]:
         h["x-tractive-user"] = user_id
     return h
 # Bump when you need to confirm Railway deployed this revision (see GET /api/version).
-RUNKIKI_BUILD_ID = "2026-04-30.4"
+RUNKIKI_BUILD_ID = "2026-04-30.5"
+# Tractive /positions expects these query params (see aiotractive tracker.positions).
+TRACTIVE_POSITIONS_FORMAT_DEFAULT = "json_segments"
 STRAVA_OAUTH = "https://www.strava.com/oauth"
 STRAVA_API = "https://www.strava.com/api/v3"
 STRAVA_TOKENS_PATH = "/tmp/strava_tokens.json"
@@ -161,9 +163,16 @@ def tractive_fetch_positions(tracker_id: str, t_from: int, t_to: int) -> list[di
     url = f"https://graph.tractive.com/3/tracker/{tracker_id}/positions"
     at, user_id = tractive_get_token_and_user()
     ph = _tractive_graph_headers(at, user_id)
+    fmt = (
+        os.environ.get("TRACTIVE_POSITIONS_FORMAT") or TRACTIVE_POSITIONS_FORMAT_DEFAULT
+    ).strip()
     res = requests.get(
         url,
-        params={"from": t_from, "to": t_to},
+        params={
+            "time_from": float(t_from),
+            "time_to": float(t_to),
+            "format": fmt,
+        },
         headers=ph,
         timeout=60,
     )
@@ -188,11 +197,41 @@ def _parse_positions_response(payload: Any) -> list[dict[str, Any]]:
         raw = payload
     elif isinstance(payload, dict):
         raw = None
-        for key in ("positions", "data", "pos", "points", "result", "items", "location_history", "path"):
-            v = payload.get(key)
-            if v is not None and isinstance(v, (list, tuple)):
-                raw = v
-                break
+        # json_segments often returns { "segments": [ { "points": [...] }, ... ] }
+        segs = payload.get("segments")
+        if isinstance(segs, list) and segs:
+            merged: list[dict[str, Any]] = []
+            for seg in segs:
+                if not isinstance(seg, dict):
+                    continue
+                sub: list[dict[str, Any]] | None = None
+                for nk in ("points", "positions", "path", "data"):
+                    pts = seg.get(nk)
+                    if isinstance(pts, list):
+                        sub = [p for p in pts if isinstance(p, dict)]
+                        break
+                if sub is not None:
+                    merged.extend(sub)
+                elif any(k in seg for k in ("lat", "latitude", "lng", "lon", "longitude")):
+                    merged.append(seg)
+            if merged:
+                raw = merged
+        if raw is None:
+            for key in (
+                "positions",
+                "data",
+                "pos",
+                "points",
+                "result",
+                "items",
+                "location_history",
+                "path",
+                "segments",
+            ):
+                v = payload.get(key)
+                if v is not None and isinstance(v, (list, tuple)):
+                    raw = v
+                    break
         if raw is None and "payload" in payload:
             return _parse_positions_response(payload.get("payload"))
         if raw is None:
