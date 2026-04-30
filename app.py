@@ -58,7 +58,7 @@ def _tractive_graph_headers(bearer_token: str, user_id: str) -> dict[str, str]:
         h["x-tractive-user"] = user_id
     return h
 # Bump when you need to confirm Railway deployed this revision (see GET /api/version).
-RUNKIKI_BUILD_ID = "2026-04-30.5"
+RUNKIKI_BUILD_ID = "2026-04-30.6"
 # Tractive /positions expects these query params (see aiotractive tracker.positions).
 TRACTIVE_POSITIONS_FORMAT_DEFAULT = "json_segments"
 STRAVA_OAUTH = "https://www.strava.com/oauth"
@@ -278,7 +278,15 @@ def normalize_track_points(positions: list[dict[str, Any]]) -> list[dict[str, fl
         out.append(entry)
     out.sort(key=lambda x: x["t"])
     if not out:
-        raise RuntimeError("No location points in that time range. Widen the window or check the tracker is on.")
+        if positions:
+            raise RuntimeError(
+                "Tractive returned samples for that window, but none had usable GPS coordinates "
+                "and timestamps. The API format may have changed."
+            )
+        raise RuntimeError(
+            "No location points in that time range. Widen the window, pick times when the tracker "
+            "had a GPS fix (outdoors), or check TRACTIVE_TRACKER_ID."
+        )
     if len(out) < MIN_TRK_PTS:
         raise RuntimeError("Need at least two GPS points to build a run. Widen the time range.")
     if len({p["t"] for p in out}) < 2:
@@ -287,6 +295,10 @@ def normalize_track_points(positions: list[dict[str, Any]]) -> list[dict[str, fl
 
 
 def _extract_time(p: dict[str, Any]) -> float | None:
+    if "position" in p and isinstance(p.get("position"), dict):
+        inner_t = _extract_time(p["position"])
+        if inner_t is not None:
+            return inner_t
     for k in (
         "time",
         "timestamp",
@@ -297,6 +309,8 @@ def _extract_time(p: dict[str, Any]) -> float | None:
         "pos_time",
         "time_utc",
         "unlocked_at",
+        "reported_at",
+        "sample_time",
     ):
         if k in p and p[k] is not None:
             v = p[k]
@@ -311,6 +325,14 @@ def _extract_time(p: dict[str, Any]) -> float | None:
 
 
 def _extract_lat_lon(p: dict[str, Any]) -> tuple[float, float] | None:
+    # Tractive live reports and json_segments points often use latlong: [lat, lon]
+    ll = p.get("latlong")
+    if isinstance(ll, (list, tuple)) and len(ll) >= 2 and ll[0] is not None and ll[1] is not None:
+        return float(ll[0]), float(ll[1])
+    if "position" in p and isinstance(p.get("position"), dict):
+        inner = _extract_lat_lon(p["position"])
+        if inner is not None:
+            return inner
     if "lat" in p and "lon" in p and p["lat"] is not None and p["lon"] is not None:
         return float(p["lat"]), float(p["lon"])
     if "lat" in p and "lng" in p and p["lat"] is not None and p["lng"] is not None:
@@ -973,6 +995,16 @@ def create_app() -> Flask:
 
 
 def _parse_time_window() -> tuple[int, int]:
+    """Prefer browser-computed Unix epochs (local timezone); fallback to date/time strings."""
+    se_raw = (request.form.get("start_epoch") or "").strip()
+    ee_raw = (request.form.get("end_epoch") or "").strip()
+    if se_raw.isdigit() and ee_raw.isdigit():
+        t_from = int(se_raw)
+        t_to = int(ee_raw)
+        if t_to <= t_from:
+            raise ValueError("End time has to be after the start time.")
+        return t_from, t_to
+
     st = (request.form.get("start") or "").strip()
     en = (request.form.get("end") or "").strip()
     if not st or not en:

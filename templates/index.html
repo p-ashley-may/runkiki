@@ -491,6 +491,15 @@
   }
   function fmtKm(m) { return (m / 1000).toFixed(2) + ' km'; }
 
+  /** Unix seconds from date + time strings using the browser's local timezone (fixes server UTC mismatch). */
+  function localEpochSeconds(dateStr, timeStr) {
+    if (!dateStr) return NaN;
+    var t = timeStr || '00:00:00';
+    if (t.length === 5) t = t + ':00';
+    var ms = new Date(dateStr + 'T' + t).getTime();
+    return isNaN(ms) ? NaN : Math.floor(ms / 1000);
+  }
+
   form.addEventListener('submit', async function(e) {
     e.preventDefault();
     if (!form.reportValidity()) return;
@@ -499,6 +508,12 @@
     fd.append('start_time', startTime.value);
     fd.append('end_date', endDate.value);
     fd.append('end_time', endTime.value);
+    var ts = localEpochSeconds(startDate.value, startTime.value);
+    var te = localEpochSeconds(endDate.value, endTime.value);
+    if (!isNaN(ts) && !isNaN(te)) {
+      fd.append('start_epoch', String(ts));
+      fd.append('end_epoch', String(te));
+    }
     var an = tEl('activity_name').value.trim() || 'Run';
     fd.append('activity_name', an);
     if (tEl('description') && tEl('description').value) fd.append('description', tEl('description').value);
