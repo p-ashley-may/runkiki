@@ -30,15 +30,35 @@ from flask import (
 # Config
 # ---------------------------------------------------------------------------
 TRACTIVE_TOKEN_URL = "https://graph.tractive.com/3/auth/token"
-TRACTIVE_CLIENT_ID = "625e533dc3c3b41c28a669f0"
-# Match unofficial clients (e.g. pytractive): client id goes in header, not always in JSON body.
-TRACTIVE_AUTH_HEADERS = {
-    "x-tractive-client": TRACTIVE_CLIENT_ID,
-    "Content-Type": "application/json;charset=UTF-8",
-    "Accept": "application/json, text/plain, */*",
-}
+# Default app id used by Tractive mobile clients (override via TRACTIVE_CLIENT_ID if Tractive blocks it).
+TRACTIVE_APP_CLIENT_ID_DEFAULT = "625e533dc3c3b41c28a669f0"
+
+
+def _tractive_app_client_id() -> str:
+    return (os.environ.get("TRACTIVE_CLIENT_ID") or TRACTIVE_APP_CLIENT_ID_DEFAULT).strip()
+
+
+def _tractive_token_request_headers() -> dict[str, str]:
+    # Same shape as pytractive base_headers() for auth POST.
+    return {
+        "x-tractive-client": _tractive_app_client_id(),
+        "Content-Type": "application/json;charset=UTF-8",
+        "Accept": "application/json, text/plain, */*",
+    }
+
+
+def _tractive_graph_headers(bearer_token: str, user_id: str) -> dict[str, str]:
+    """Headers for authenticated Graph API calls (token + client + user), matching pytractive."""
+    h = {
+        "Authorization": f"Bearer {bearer_token}",
+        "x-tractive-client": _tractive_app_client_id(),
+        "Accept": "application/json, text/plain, */*",
+    }
+    if user_id:
+        h["x-tractive-user"] = user_id
+    return h
 # Bump when you need to confirm Railway deployed this revision (see GET /api/version).
-RUNKIKI_BUILD_ID = "2026-04-30.3"
+RUNKIKI_BUILD_ID = "2026-04-30.4"
 STRAVA_OAUTH = "https://www.strava.com/oauth"
 STRAVA_API = "https://www.strava.com/api/v3"
 STRAVA_TOKENS_PATH = "/tmp/strava_tokens.json"
@@ -60,7 +80,7 @@ def _tractive_auth_post(email: str, password: str, *, legacy_json_body: bool) ->
         "platform_token": password,
     }
     if legacy_json_body:
-        body["client_id"] = TRACTIVE_CLIENT_ID
+        body["client_id"] = _tractive_app_client_id()
         return requests.post(
             TRACTIVE_TOKEN_URL,
             json=body,
@@ -73,7 +93,7 @@ def _tractive_auth_post(email: str, password: str, *, legacy_json_body: bool) ->
     return requests.post(
         TRACTIVE_TOKEN_URL,
         json=body,
-        headers=TRACTIVE_AUTH_HEADERS,
+        headers=_tractive_token_request_headers(),
         timeout=30,
     )
 
@@ -140,12 +160,7 @@ def tractive_fetch_positions(tracker_id: str, t_from: int, t_to: int) -> list[di
         raise RuntimeError("Tractive tracker ID is missing. Set TRACTIVE_TRACKER_ID.")
     url = f"https://graph.tractive.com/3/tracker/{tracker_id}/positions"
     at, user_id = tractive_get_token_and_user()
-    ph = {
-        "Authorization": f"Bearer {at}",
-        "Accept": "application/json, text/plain, */*",
-    }
-    if user_id:
-        ph["x-tractive-user"] = user_id
+    ph = _tractive_graph_headers(at, user_id)
     res = requests.get(
         url,
         params={"from": t_from, "to": t_to},
