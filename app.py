@@ -61,7 +61,7 @@ def _tractive_graph_headers(bearer_token: str, user_id: str) -> dict[str, str]:
         h["x-tractive-user"] = user_id
     return h
 # Bump when you need to confirm Railway deployed this revision (see GET /api/version).
-RUNKIKI_BUILD_ID = "2026-04-30.8"
+RUNKIKI_BUILD_ID = "2026-04-30.9"
 # Tractive /positions expects these query params (see aiotractive tracker.positions).
 TRACTIVE_POSITIONS_FORMAT_DEFAULT = "json_segments"
 STRAVA_OAUTH = "https://www.strava.com/oauth"
@@ -544,6 +544,16 @@ def _env_strip(key: str) -> str | None:
     return s if s else None
 
 
+def _normalize_strava_token(raw: str | None) -> str | None:
+    """Strip whitespace and accidental 'Bearer ' prefix from pasted Railway tokens."""
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if s.lower().startswith("bearer "):
+        s = s[7:].strip()
+    return s if s else None
+
+
 def strava_merged_creds() -> dict[str, Any]:
     s = strava_read_state()
     ex = s.get("expires_at")
@@ -569,8 +579,12 @@ def strava_merged_creds() -> dict[str, Any]:
     return {
         "client_id": (s.get("client_id") or _env_strip("STRAVA_CLIENT_ID")) or None,
         "client_secret": (s.get("client_secret") or _env_strip("STRAVA_CLIENT_SECRET")) or None,
-        "access_token": (s.get("access_token") or _env_strip("STRAVA_ACCESS_TOKEN")) or None,
-        "refresh_token": (s.get("refresh_token") or _env_strip("STRAVA_REFRESH_TOKEN")) or None,
+        "access_token": _normalize_strava_token(
+            str(s.get("access_token")) if s.get("access_token") else _env_strip("STRAVA_ACCESS_TOKEN")
+        ),
+        "refresh_token": _normalize_strava_token(
+            str(s.get("refresh_token")) if s.get("refresh_token") else _env_strip("STRAVA_REFRESH_TOKEN")
+        ),
         "expires_at": ex_v,
     }
 
@@ -584,9 +598,17 @@ def get_valid_strava_token() -> str:
         exp_at_f = 0.0
     # Stale only when we have a real expiry timestamp and it has passed (with 2 min skew).
     token_stale = bool(exp_at_f > 1e9 and now >= exp_at_f - 120)
+    # No expires_at in env/file → do not trust a pasted STRAVA_ACCESS_TOKEN; refresh if possible.
+    expiry_unknown = exp_at_f <= 1e9
+    can_refresh = bool(
+        c.get("refresh_token") and c.get("client_id") and c.get("client_secret")
+    )
 
     if c.get("access_token") and not token_stale:
-        return str(c["access_token"])
+        if expiry_unknown and can_refresh:
+            pass  # exchange refresh for a known-good access token
+        else:
+            return str(c["access_token"])
 
     # Expired or missing access token: use refresh (also covers Railway with only refresh + client id/secret).
     if not c.get("refresh_token"):
