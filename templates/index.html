@@ -37,15 +37,6 @@
     @media (min-width: 400px) {
       .page { max-width: 480px; }
     }
-    .app-bar {
-      height: 44px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #1c1c1e;
-      font-size: 13px;
-      font-weight: 600;
-    }
     .hero { text-align: center; margin-bottom: 1.1rem; }
     .hero h1 {
       font-size: 2.05rem;
@@ -206,7 +197,7 @@
     }
     .actions .pri { background: #fff; color: var(--accent); border: 1.5px solid var(--accent); }
     .actions .sec { background: #e8e8ed; color: #1c1c1e; border: 0; }
-    .panel-ok, .pan-load { text-align: center; padding: 0.2rem 0.25rem 0.5rem; }
+    .panel-ok { text-align: center; padding: 0.2rem 0.25rem 0.5rem; }
     .err-title { color: #b00020; }
     @keyframes pulsedot { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
     .load-ellipsis { font-size: 0.6rem; letter-spacing: 0.15em; color: var(--accent); animation: pulsedot 1.2s ease-in-out infinite; }
@@ -215,7 +206,6 @@
 <body>
   <div class="page">
     <div class="view" id="formView">
-      <header class="app-bar" aria-label="app">Runkiki</header>
       <div class="hero">
         <h1>🐺 Runkiki</h1>
         <p class="sub">Log your run</p>
@@ -313,13 +303,11 @@
     </div>
 
     <div class="view hidden" id="loadingView" role="status" aria-live="polite">
-      <header class="app-bar">Runkiki</header>
       <div class="hero" style="margin-top:0.1rem">
         <h1>🐺 Runkiki</h1>
         <p class="sub">Log your run</p>
       </div>
       <div class="form-card--panel" style="margin-top:0.3rem; padding:1rem 0.6rem">
-        <p class="pan-load" style="font-size:0.78rem; color:var(--muted); margin:0.2rem 0 0.4rem">Runkiki</p>
         <div class="ok-icon" style="background:#ffefe6;background-image:none"><span class="load-ellipsis">…</span></div>
         <h2 class="summary-title" style="margin:0.35rem 0 0.25rem">Logging your run…</h2>
         <p class="summary-copy" style="font-size:0.88rem; max-width:17rem; margin:0 auto">A few seconds while we pull positions and post to Strava.</p>
@@ -327,7 +315,6 @@
     </div>
 
     <div class="view hidden" id="okView" aria-live="polite">
-      <header class="app-bar">Runkiki</header>
       <div class="hero" style="margin-top:0.1rem">
         <h1>🐺 Runkiki</h1>
         <p class="sub">Log your run</p>
@@ -348,7 +335,6 @@
     </div>
 
     <div class="view hidden" id="errView" role="alert" aria-live="assertive">
-      <header class="app-bar">Runkiki</header>
       <div class="hero" style="margin-top:0.1rem">
         <h1>🐺 Runkiki</h1>
         <p class="sub">Log your run</p>
