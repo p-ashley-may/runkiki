@@ -4,6 +4,7 @@ Run Logger — Tractive → GPX → Strava (Flask).
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import re
@@ -25,6 +26,8 @@ from flask import (
     session,
     url_for,
 )
+
+_logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Config
@@ -58,7 +61,7 @@ def _tractive_graph_headers(bearer_token: str, user_id: str) -> dict[str, str]:
         h["x-tractive-user"] = user_id
     return h
 # Bump when you need to confirm Railway deployed this revision (see GET /api/version).
-RUNKIKI_BUILD_ID = "2026-04-30.6"
+RUNKIKI_BUILD_ID = "2026-04-30.7"
 # Tractive /positions expects these query params (see aiotractive tracker.positions).
 TRACTIVE_POSITIONS_FORMAT_DEFAULT = "json_segments"
 STRAVA_OAUTH = "https://www.strava.com/oauth"
@@ -157,37 +160,88 @@ def tractive_get_token_and_user() -> tuple[str, str]:
     return str(token), uid
 
 
+def _tractive_positions_api_versions() -> list[str]:
+    """Prefer Graph API v4 (current aiotractive); fall back to v3."""
+    raw = (os.environ.get("TRACTIVE_GRAPH_API_VERSION") or "").strip()
+    if raw:
+        return [x.strip() for x in raw.split(",") if x.strip()]
+    return ["4", "3"]
+
+
 def tractive_fetch_positions(tracker_id: str, t_from: int, t_to: int) -> list[dict[str, Any]]:
     if not tracker_id:
         raise RuntimeError("Tractive tracker ID is missing. Set TRACTIVE_TRACKER_ID.")
-    url = f"https://graph.tractive.com/3/tracker/{tracker_id}/positions"
     at, user_id = tractive_get_token_and_user()
     ph = _tractive_graph_headers(at, user_id)
     fmt = (
         os.environ.get("TRACTIVE_POSITIONS_FORMAT") or TRACTIVE_POSITIONS_FORMAT_DEFAULT
     ).strip()
-    res = requests.get(
-        url,
-        params={
-            "time_from": float(t_from),
-            "time_to": float(t_to),
-            "format": fmt,
-        },
-        headers=ph,
-        timeout=60,
+    params = {
+        "time_from": float(t_from),
+        "time_to": float(t_to),
+        "format": fmt,
+    }
+    last_payload: Any = None
+    for ver in _tractive_positions_api_versions():
+        url = f"https://graph.tractive.com/{ver}/tracker/{tracker_id}/positions"
+        res = requests.get(url, params=params, headers=ph, timeout=60)
+        if res.status_code == 404:
+            raise RuntimeError(
+                "Tractive returned 404 for this tracker. TRACTIVE_TRACKER_ID must be the "
+                "device/tracker id from the Tractive app (often shown under the tracker or pet "
+                "device settings), not only the pet's name."
+            )
+        if res.status_code >= 400:
+            msg = f"Tractive could not return positions (HTTP {res.status_code}). Try a different time range."
+            try:
+                err = res.json()
+                if isinstance(err, dict) and (err.get("message") or err.get("error")):
+                    msg = f"Tractive: {err.get('message') or err.get('error')}"
+            except Exception:
+                pass
+            raise RuntimeError(msg)
+        last_payload = res.json()
+        parsed = _parse_positions_response(last_payload)
+        if parsed:
+            return parsed
+        _logger.warning(
+            "Tractive positions API v%s returned no parseable points (keys=%s); trying fallback version if any.",
+            ver,
+            list(last_payload.keys()) if isinstance(last_payload, dict) else type(last_payload).__name__,
+        )
+    if isinstance(last_payload, dict):
+        sample = {k: type(last_payload[k]).__name__ for k in list(last_payload.keys())[:12]}
+        raise RuntimeError(
+            "Tractive returned location data, but in a shape we could not read into GPS points. "
+            f"API response keys: {sample}. Set TRACTIVE_GRAPH_API_VERSION=3 to force the older API, "
+            "or widen the time range. Confirm TRACTIVE_TRACKER_ID is the tracker hardware id."
+        )
+    raise RuntimeError(
+        "No GPS points from Tractive for that window. Widen the range, pick times when the pet "
+        "was moving outside with a fix, and verify TRACTIVE_TRACKER_ID matches the tracker device id."
     )
-    if res.status_code == 404:
-        raise RuntimeError("Tractive has no data for that tracker, or the tracker ID is wrong.")
-    if res.status_code >= 400:
-        msg = f"Tractive could not return positions (HTTP {res.status_code}). Try a different time range."
-        try:
-            err = res.json()
-            if isinstance(err, dict) and (err.get("message") or err.get("error")):
-                msg = f"Tractive: {err.get('message') or err.get('error')}"
-        except Exception:
-            pass
-        raise RuntimeError(msg)
-    return _parse_positions_response(res.json())
+
+
+def _looks_like_tractive_point(d: dict[str, Any]) -> bool:
+    if _extract_lat_lon(d) is None:
+        return False
+    return _extract_time(d) is not None
+
+
+def _scavenge_nested_points(obj: Any, depth: int = 0) -> list[dict[str, Any]]:
+    """Last-resort walk for nested json_segments / GeoJSON-like trees."""
+    found: list[dict[str, Any]] = []
+    if depth > 16:
+        return found
+    if isinstance(obj, dict):
+        if _looks_like_tractive_point(obj):
+            found.append(obj)
+        for v in obj.values():
+            found.extend(_scavenge_nested_points(v, depth + 1))
+    elif isinstance(obj, list):
+        for item in obj:
+            found.extend(_scavenge_nested_points(item, depth + 1))
+    return found
 
 
 def _parse_positions_response(payload: Any) -> list[dict[str, Any]]:
@@ -205,7 +259,7 @@ def _parse_positions_response(payload: Any) -> list[dict[str, Any]]:
                 if not isinstance(seg, dict):
                     continue
                 sub: list[dict[str, Any]] | None = None
-                for nk in ("points", "positions", "path", "data"):
+                for nk in ("points", "positions", "path", "data", "locations", "samples"):
                     pts = seg.get(nk)
                     if isinstance(pts, list):
                         sub = [p for p in pts if isinstance(p, dict)]
@@ -242,17 +296,20 @@ def _parse_positions_response(payload: Any) -> list[dict[str, Any]]:
         return []
 
     if not raw:
-        return []
+        return _scavenge_nested_points(payload)
     if isinstance(raw, tuple):
         raw = list(raw)
     if not raw:
-        return []
+        return _scavenge_nested_points(payload)
     if isinstance(raw[0], (list, tuple)) and len(raw[0]) >= 2 and not isinstance(
         raw[0][0] if len(raw) > 0 else None, dict
     ):
         return [{"lat": a[0], "lon": a[1] if len(a) > 1 else a[0], "t": a[2] if len(a) > 2 else 0} for a in raw]
 
-    return [p for p in raw if p is not None and isinstance(p, (dict,))]
+    dicts = [p for p in raw if p is not None and isinstance(p, (dict,))]
+    if dicts:
+        return dicts
+    return _scavenge_nested_points(payload)
 
 
 def normalize_track_points(positions: list[dict[str, Any]]) -> list[dict[str, float]]:
@@ -311,6 +368,9 @@ def _extract_time(p: dict[str, Any]) -> float | None:
         "unlocked_at",
         "reported_at",
         "sample_time",
+        "epoch",
+        "unix",
+        "unix_time",
     ):
         if k in p and p[k] is not None:
             v = p[k]
