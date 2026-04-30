@@ -29,6 +29,34 @@ from flask import (
 
 _logger = logging.getLogger(__name__)
 
+# region agent log
+_AGENT_DEBUG_LOG = "/Users/ashleymay/.cursor/debug-logs/debug-21b571.log"
+_AGENT_SESSION = "21b571"
+
+
+def _agent_debug_log(hypothesis_id: str, location: str, message: str, data: dict[str, Any]) -> None:
+    """NDJSON debug sink + stdout (Railway log capture). Never log secrets."""
+    payload = {
+        "sessionId": _AGENT_SESSION,
+        "timestamp": int(time.time() * 1000),
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data,
+    }
+    line = json.dumps(payload, default=str) + "\n"
+    try:
+        with open(_AGENT_DEBUG_LOG, "a", encoding="utf-8") as df:
+            df.write(line)
+    except OSError:
+        pass
+    out = "DEBUG_21b571 " + line.strip()
+    print(out, flush=True)
+    _logger.warning("%s", out)
+
+
+# endregion
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -61,7 +89,7 @@ def _tractive_graph_headers(bearer_token: str, user_id: str) -> dict[str, str]:
         h["x-tractive-user"] = user_id
     return h
 # Bump when you need to confirm Railway deployed this revision (see GET /api/version).
-RUNKIKI_BUILD_ID = "2026-04-30.11"
+RUNKIKI_BUILD_ID = "2026-04-30.12"
 # Tractive /positions expects these query params (see aiotractive tracker.positions).
 TRACTIVE_POSITIONS_FORMAT_DEFAULT = "json_segments"
 STRAVA_OAUTH = "https://www.strava.com/oauth"
@@ -607,6 +635,7 @@ def strava_merged_creds() -> dict[str, Any]:
 
 def get_valid_strava_token(force_refresh: bool = False) -> str:
     c = strava_merged_creds()
+    st = strava_read_state()
     now = time.time()
     try:
         exp_at_f = float(c.get("expires_at") or 0)
@@ -619,6 +648,25 @@ def get_valid_strava_token(force_refresh: bool = False) -> str:
     can_refresh = bool(
         c.get("refresh_token") and c.get("client_id") and c.get("client_secret")
     )
+
+    # region agent log
+    _agent_debug_log(
+        "H1",
+        "app.py:get_valid_strava_token",
+        "entry",
+        {
+            "force_refresh": force_refresh,
+            "exp_at_f": round(exp_at_f, 1),
+            "token_stale": token_stale,
+            "expiry_unknown": expiry_unknown,
+            "has_access": bool(c.get("access_token")),
+            "has_refresh": bool(c.get("refresh_token")),
+            "can_refresh": can_refresh,
+            "state_has_keys": bool(st),
+            "state_has_expires": st.get("expires_at") is not None,
+        },
+    )
+    # endregion
 
     if not force_refresh and c.get("access_token") and not token_stale:
         if expiry_unknown and can_refresh:
@@ -647,6 +695,14 @@ def get_valid_strava_token(force_refresh: bool = False) -> str:
         },
         timeout=30,
     )
+    # region agent log
+    _agent_debug_log(
+        "H3",
+        "app.py:get_valid_strava_token",
+        "oauth_refresh_post",
+        {"http_status": r.status_code, "force_refresh": force_refresh},
+    )
+    # endregion
     if r.status_code >= 400:
         err = f"Strava would not refresh the access token (HTTP {r.status_code}). Visit /auth to link Strava again."
         try:
@@ -752,9 +808,48 @@ def strava_upload_gpx(
 
     t = get_valid_strava_token()
     r = _do_upload(t)
-    if r.status_code >= 400 and _strava_response_suggests_bad_token(r):
+    r1 = r
+    retried = False
+    k1: list[str] = []
+    msg_prefix = ""
+    try:
+        j1 = r1.json()
+        if isinstance(j1, dict):
+            k1 = list(j1.keys())[:24]
+            msg_prefix = str(j1.get("message") or j1.get("error") or "")[:120]
+    except Exception:
+        pass
+    sb = _strava_response_suggests_bad_token(r1)
+    if r1.status_code >= 400 and sb:
+        retried = True
         t2 = get_valid_strava_token(force_refresh=True)
         r = _do_upload(t2)
+    k2: list[str] = []
+    msg2_prefix = ""
+    try:
+        j2 = r.json()
+        if isinstance(j2, dict):
+            k2 = list(j2.keys())[:24]
+            msg2_prefix = str(j2.get("message") or j2.get("error") or "")[:120]
+    except Exception:
+        pass
+    # region agent log
+    _agent_debug_log(
+        "H2",
+        "app.py:strava_upload_gpx",
+        "upload_flow",
+        {
+            "attempt1_status": r1.status_code,
+            "attempt1_keys": k1,
+            "msg1_prefix": msg_prefix,
+            "suggests_bad": sb,
+            "retried": retried,
+            "attempt2_status": r.status_code,
+            "attempt2_keys": k2,
+            "msg2_prefix": msg2_prefix,
+        },
+    )
+    # endregion
 
     if r.status_code >= 400:
         m = f"Strava would not accept the file (HTTP {r.status_code})."
@@ -827,6 +922,14 @@ def strava_update_activity(
     }
     r = strava_authorized_put(f"/activities/{aid}", json=body)
     if r.status_code not in (200, 201):
+        # region agent log
+        _agent_debug_log(
+            "H5",
+            "app.py:strava_update_activity",
+            "put_failed",
+            {"http_status": r.status_code, "stage": "first_put"},
+        )
+        # endregion
         m = f"Strava would not update the activity (HTTP {r.status_code})."
         try:
             o = r.json()
@@ -1128,6 +1231,23 @@ def create_app() -> Flask:
         if photo_warn:
             out["photo_note"] = photo_warn
         return jsonify(out)
+
+    # region agent log
+    _logger.warning(
+        "DEBUG_21b571 %s",
+        json.dumps(
+            {
+                "sessionId": _AGENT_SESSION,
+                "timestamp": int(time.time() * 1000),
+                "hypothesisId": "BOOT",
+                "location": "app.py:create_app",
+                "message": "app_ready",
+                "data": {"build": os.environ.get("RUNKIKI_BUILD", RUNKIKI_BUILD_ID)},
+            },
+            default=str,
+        ),
+    )
+    # endregion
 
     return app
 
