@@ -38,7 +38,7 @@ TRACTIVE_AUTH_HEADERS = {
     "Accept": "application/json, text/plain, */*",
 }
 # Bump when you need to confirm Railway deployed this revision (see GET /api/version).
-RUNKIKI_BUILD_ID = "2026-04-30.2"
+RUNKIKI_BUILD_ID = "2026-04-30.3"
 STRAVA_OAUTH = "https://www.strava.com/oauth"
 STRAVA_API = "https://www.strava.com/api/v3"
 STRAVA_TOKENS_PATH = "/tmp/strava_tokens.json"
@@ -724,9 +724,14 @@ def create_app() -> Flask:
     @app.before_request
     def _gate():
         p = (request.path or "/").rstrip() or "/"
-        if p in ("/login", "/auth", "/auth/callback", "/favicon.ico", "/api/version") or p.startswith(
-            "/static/"
-        ):
+        if p in (
+            "/login",
+            "/auth",
+            "/auth/callback",
+            "/favicon.ico",
+            "/api/version",
+            "/version",
+        ) or p.startswith("/static/"):
             return None
         if session.get("authed") is not True:
             if p.startswith("/api/"):
@@ -739,6 +744,7 @@ def create_app() -> Flask:
         return ("", 204)
 
     @app.get("/api/version")
+    @app.get("/version")
     def api_version():
         """Public build fingerprint — open in a browser to confirm Railway deployed this revision."""
         return jsonify(
