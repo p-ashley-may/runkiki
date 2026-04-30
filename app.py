@@ -89,7 +89,7 @@ def _tractive_graph_headers(bearer_token: str, user_id: str) -> dict[str, str]:
         h["x-tractive-user"] = user_id
     return h
 # Bump when you need to confirm Railway deployed this revision (see GET /api/version).
-RUNKIKI_BUILD_ID = "2026-04-30.13"
+RUNKIKI_BUILD_ID = "2026-04-30.14"
 # Tractive /positions expects these query params (see aiotractive tracker.positions).
 TRACTIVE_POSITIONS_FORMAT_DEFAULT = "json_segments"
 STRAVA_OAUTH = "https://www.strava.com/oauth"
@@ -903,8 +903,10 @@ def strava_upload_gpx(
     return int(uid)
 
 
-def strava_poll_upload(uid: int) -> int:
+def strava_poll_upload(uid: int) -> tuple[int, dict[str, Any] | None]:
+    """Poll until activity exists. Returns (activity_id, last_upload_json) for optional photo_metadata."""
     deadline = time.time() + UPLOAD_POLL_MAX_SEC
+    last: dict[str, Any] | None = None
     while time.time() < deadline:
         t = get_valid_strava_token()
         r = requests.get(
@@ -914,8 +916,10 @@ def strava_poll_upload(uid: int) -> int:
         )
         r.raise_for_status()
         s = r.json()
+        if isinstance(s, dict):
+            last = s
         if s.get("activity_id"):
-            return int(s["activity_id"])
+            return int(s["activity_id"]), last
         e = s.get("error")
         if e and str(e).strip() and str(e).lower() not in ("null", "none", ""):
             err_clean = re.sub(r"<[^>]+>", " ", str(e))
@@ -923,7 +927,69 @@ def strava_poll_upload(uid: int) -> int:
                 f"Strava had trouble with that file: {err_clean.strip() or 'Check the run times and file format.'}"
             )
         time.sleep(UPLOAD_POLL_INTERVAL)
-    return 0
+    return 0, last
+
+
+def _strava_guess_image_mimetype(filename: str | None, reported: str | None) -> str:
+    ext = os.path.splitext((filename or "").lower())[1]
+    if reported and str(reported).strip() and reported != "application/octet-stream":
+        return str(reported)
+    if ext in (".jpg", ".jpeg"):
+        return "image/jpeg"
+    if ext == ".png":
+        return "image/png"
+    if ext == ".webp":
+        return "image/webp"
+    if ext in (".heic", ".heif"):
+        return "image/heic"
+    return reported or "application/octet-stream"
+
+
+def _strava_presigned_photo_puts(photo_metadata: Any, files: list) -> tuple[list, str | None]:
+    """
+    Partner-style flow: Strava may return presigned PUT targets on the upload poll response.
+    See stravalib ActivityUploader.photo_metadata (undocumented; often absent for non-partner apps).
+    """
+    if not isinstance(photo_metadata, list) or not photo_metadata:
+        return list(files), None
+    queue: list = list(files)
+    warnings: list[str] = []
+    for slot in photo_metadata:
+        if not queue:
+            break
+        if not isinstance(slot, dict) or slot.get("method") != "PUT" or not slot.get("uri"):
+            continue
+        hdr = dict(slot.get("header") or {})
+        ct = (hdr.get("Content-Type") or "").lower()
+        match_i: int | None = None
+        for i, f in enumerate(queue):
+            if not f or not f.filename:
+                continue
+            ext = os.path.splitext((f.filename or "").lower())[1]
+            if ct == "image/jpeg" and ext not in (".jpg", ".jpeg"):
+                continue
+            match_i = i
+            break
+        if match_i is None:
+            continue
+        f = queue.pop(match_i)
+        try:
+            f.stream.seek(0)
+            body = f.stream.read()
+        except (OSError, ValueError, AttributeError, TypeError) as e:
+            warnings.append(f"Could not read photo: {e}")
+            queue.append(f)
+            continue
+        try:
+            r = requests.put(slot["uri"], data=body, headers=hdr, timeout=120)
+            if r.status_code not in (200, 201, 204):
+                msg = _strava_error_message_from_body(r) or f"Presigned photo upload HTTP {r.status_code}"
+                warnings.append(msg)
+                queue.append(f)
+        except requests.RequestException as e:
+            warnings.append(str(e))
+            queue.append(f)
+    return queue, (warnings[0] if warnings else None)
 
 
 def strava_get_activity(aid: int) -> dict[str, Any]:
@@ -1001,7 +1067,8 @@ def strava_update_activity(
 
 def strava_post_activity_photos(activity_id: int, files: list) -> str | None:
     """
-    Tries the native photo upload. Returns a human string if it did not work.
+    Upload photos via POST /activities/{id}/photos (undocumented; availability varies).
+    Tries multipart field names ``photo`` and ``file`` — Strava's API has shipped both.
     """
     if not files:
         return None
@@ -1010,32 +1077,35 @@ def strava_post_activity_photos(activity_id: int, files: list) -> str | None:
     for f in files:
         if not f or not f.filename:
             continue
-        try:
-            f.stream.seek(0)
-        except (OSError, ValueError, AttributeError):
-            pass
-        files_up = {
-            "file": (
-                f.filename,
-                f.stream,
-                f.mimetype or "application/octet-stream",
+        mt = _strava_guess_image_mimetype(f.filename, getattr(f, "mimetype", None))
+        posted = False
+        last_detail: str | None = None
+        last_code: int | None = None
+        for form_name in ("photo", "file"):
+            try:
+                f.stream.seek(0)
+            except (OSError, ValueError, AttributeError):
+                pass
+            files_up = {form_name: (f.filename, f.stream, mt)}
+            r = requests.post(
+                f"{STRAVA_API}/activities/{activity_id}/photos",
+                files=files_up,
+                headers={"Authorization": f"Bearer {t}"},
+                timeout=120,
             )
-        }
-        r = requests.post(
-            f"{STRAVA_API}/activities/{activity_id}/photos",
-            files=files_up,
-            headers={"Authorization": f"Bearer {t}"},
-            timeout=120,
-        )
-        if r.status_code in (200, 201, 202, 204):
+            last_code = r.status_code
+            if r.status_code in (200, 201, 202, 204):
+                posted = True
+                break
+            last_detail = _strava_error_message_from_body(r) or f"HTTP {r.status_code}"
+        if posted:
             continue
-        w = f"Strava would not add one photo (HTTP {r.status_code})."
-        try:
-            o = r.json()
-            if isinstance(o, dict) and o.get("message"):
-                w = str(o.get("message"))
-        except Exception:
-            pass
+        w = last_detail or "Strava rejected the photo upload."
+        if last_code == 403:
+            w += (
+                " Strava often restricts activity-photo uploads to approved partner integrations; "
+                "you can add images from the activity page on strava.com."
+            )
         warnings.append(w)
     if warnings:
         return (
@@ -1216,7 +1286,7 @@ def create_app() -> Flask:
             msg = str(e)
             current_app.logger.warning("log-run Strava upload failed: %s", msg)
             return jsonify(error=msg), 400
-        aid = strava_poll_upload(int(up_id))
+        aid, upload_final = strava_poll_upload(int(up_id))
         if not aid:
             return jsonify(
                 error="Strava is still processing the file, but it took too long. Check Strava in a minute; the run may show up as processing."
@@ -1247,14 +1317,27 @@ def create_app() -> Flask:
         moving = d.get("moving_time")
         if not moving:
             moving = int(max(0, t_to - t_from))
+        raw_photo_count = sum(1 for p in photos if p and p.filename)
         to_upload: list = []
         for p in photos:
             if p and p.filename and _allowed_image(p):
                 p.stream.seek(0)
                 to_upload.append(p)
-        w = strava_post_activity_photos(aid, to_upload)
-        if w:
-            photo_warn = w
+        if raw_photo_count and not to_upload:
+            photo_warn = (
+                "Photos were skipped — use JPG or PNG under 50MB each. "
+                "(iPhone HEIC: export or convert to JPEG before uploading.)"
+            )
+        remaining = to_upload
+        if upload_final and remaining:
+            pm = upload_final.get("photo_metadata")
+            remaining, pm_warn = _strava_presigned_photo_puts(pm, remaining)
+            if pm_warn:
+                photo_warn = (photo_warn + " " if photo_warn else "") + pm_warn
+        if remaining:
+            w = strava_post_activity_photos(aid, remaining)
+            if w:
+                photo_warn = (photo_warn + " " if photo_warn else "") + w
         out: dict[str, Any] = {
             "ok": True,
             "activity_id": aid,
