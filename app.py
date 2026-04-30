@@ -61,7 +61,7 @@ def _tractive_graph_headers(bearer_token: str, user_id: str) -> dict[str, str]:
         h["x-tractive-user"] = user_id
     return h
 # Bump when you need to confirm Railway deployed this revision (see GET /api/version).
-RUNKIKI_BUILD_ID = "2026-04-30.7"
+RUNKIKI_BUILD_ID = "2026-04-30.8"
 # Tractive /positions expects these query params (see aiotractive tracker.positions).
 TRACTIVE_POSITIONS_FORMAT_DEFAULT = "json_segments"
 STRAVA_OAUTH = "https://www.strava.com/oauth"
@@ -536,6 +536,14 @@ def strava_write_state(state: dict[str, Any]) -> None:
             pass
 
 
+def _env_strip(key: str) -> str | None:
+    v = os.environ.get(key)
+    if v is None:
+        return None
+    s = str(v).strip()
+    return s if s else None
+
+
 def strava_merged_creds() -> dict[str, Any]:
     s = strava_read_state()
     ex = s.get("expires_at")
@@ -559,27 +567,38 @@ def strava_merged_creds() -> dict[str, Any]:
     if not ex_v and ex_env_v:
         ex_v = ex_env_v
     return {
-        "client_id": (s.get("client_id") or os.environ.get("STRAVA_CLIENT_ID", "")) or None,
-        "client_secret": (s.get("client_secret") or os.environ.get("STRAVA_CLIENT_SECRET", "")) or None,
-        "access_token": s.get("access_token") or os.environ.get("STRAVA_ACCESS_TOKEN") or None,
-        "refresh_token": s.get("refresh_token") or os.environ.get("STRAVA_REFRESH_TOKEN") or None,
+        "client_id": (s.get("client_id") or _env_strip("STRAVA_CLIENT_ID")) or None,
+        "client_secret": (s.get("client_secret") or _env_strip("STRAVA_CLIENT_SECRET")) or None,
+        "access_token": (s.get("access_token") or _env_strip("STRAVA_ACCESS_TOKEN")) or None,
+        "refresh_token": (s.get("refresh_token") or _env_strip("STRAVA_REFRESH_TOKEN")) or None,
         "expires_at": ex_v,
     }
 
 
 def get_valid_strava_token() -> str:
     c = strava_merged_creds()
-    if not c.get("access_token"):
-        raise RuntimeError(
-            "Strava is not connected. Open /auth in your browser after setting STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, and STRAVA_REDIRECT_URI."
-        )
-    if not c.get("refresh_token"):
-        raise RuntimeError("Strava refresh token is missing. Re-authorize via /auth.")
     now = time.time()
-    if c.get("expires_at", 0) and now < float(c["expires_at"]) - 120:
+    try:
+        exp_at_f = float(c.get("expires_at") or 0)
+    except (TypeError, ValueError):
+        exp_at_f = 0.0
+    # Stale only when we have a real expiry timestamp and it has passed (with 2 min skew).
+    token_stale = bool(exp_at_f > 1e9 and now >= exp_at_f - 120)
+
+    if c.get("access_token") and not token_stale:
         return str(c["access_token"])
+
+    # Expired or missing access token: use refresh (also covers Railway with only refresh + client id/secret).
+    if not c.get("refresh_token"):
+        raise RuntimeError(
+            "Strava is not connected. Open /auth after setting STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, "
+            "and STRAVA_REDIRECT_URI. Or set STRAVA_REFRESH_TOKEN (and STRAVA_CLIENT_SECRET / STRAVA_CLIENT_ID) "
+            "in Railway — STRAVA_ACCESS_TOKEN alone is optional if you have a refresh token."
+        )
     if not c.get("client_id") or not c.get("client_secret"):
-        raise RuntimeError("STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET are required to refresh the token.")
+        raise RuntimeError(
+            "STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET are required to refresh the Strava token."
+        )
     r = requests.post(
         f"{STRAVA_OAUTH}/token",
         data={
