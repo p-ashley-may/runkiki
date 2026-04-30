@@ -61,7 +61,7 @@ def _tractive_graph_headers(bearer_token: str, user_id: str) -> dict[str, str]:
         h["x-tractive-user"] = user_id
     return h
 # Bump when you need to confirm Railway deployed this revision (see GET /api/version).
-RUNKIKI_BUILD_ID = "2026-04-30.10"
+RUNKIKI_BUILD_ID = "2026-04-30.11"
 # Tractive /positions expects these query params (see aiotractive tracker.positions).
 TRACTIVE_POSITIONS_FORMAT_DEFAULT = "json_segments"
 STRAVA_OAUTH = "https://www.strava.com/oauth"
@@ -605,7 +605,7 @@ def strava_merged_creds() -> dict[str, Any]:
     }
 
 
-def get_valid_strava_token() -> str:
+def get_valid_strava_token(force_refresh: bool = False) -> str:
     c = strava_merged_creds()
     now = time.time()
     try:
@@ -620,7 +620,7 @@ def get_valid_strava_token() -> str:
         c.get("refresh_token") and c.get("client_id") and c.get("client_secret")
     )
 
-    if c.get("access_token") and not token_stale:
+    if not force_refresh and c.get("access_token") and not token_stale:
         if expiry_unknown and can_refresh:
             pass  # exchange refresh for a known-good access token
         else:
@@ -709,6 +709,19 @@ def strava_authorized_put(path: str, **kwargs) -> requests.Response:
     return requests.put(f"{STRAVA_API}{path}", headers=h, **kwargs)
 
 
+def _strava_response_suggests_bad_token(resp: requests.Response) -> bool:
+    if resp.status_code in (401, 403):
+        return True
+    try:
+        o = resp.json()
+        msg = str(o.get("message") or o.get("error") or "").lower()
+        if "authorization" in msg or "invalid access token" in msg or "token expired" in msg:
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def strava_upload_gpx(
     gpx_bytes: bytes,
     *,
@@ -716,10 +729,6 @@ def strava_upload_gpx(
     description: str,
     commute: bool,
 ) -> int:
-    t = get_valid_strava_token()
-    files = {
-        "file": ("run_logger.gpx", BytesIO(gpx_bytes), "application/gpx+xml"),
-    }
     data: dict[str, str] = {
         "data_type": "gpx",
         "name": name or "Run",
@@ -728,13 +737,25 @@ def strava_upload_gpx(
         data["description"] = description
     data["commute"] = "1" if commute else "0"
     data["activity_type"] = "run"
-    r = requests.post(
-        f"{STRAVA_API}/uploads",
-        data=data,
-        files=files,
-        headers={"Authorization": f"Bearer {t}"},
-        timeout=120,
-    )
+
+    def _do_upload(token: str) -> requests.Response:
+        files = {
+            "file": ("run_logger.gpx", BytesIO(gpx_bytes), "application/gpx+xml"),
+        }
+        return requests.post(
+            f"{STRAVA_API}/uploads",
+            data=data,
+            files=files,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=120,
+        )
+
+    t = get_valid_strava_token()
+    r = _do_upload(t)
+    if r.status_code >= 400 and _strava_response_suggests_bad_token(r):
+        t2 = get_valid_strava_token(force_refresh=True)
+        r = _do_upload(t2)
+
     if r.status_code >= 400:
         m = f"Strava would not accept the file (HTTP {r.status_code})."
         try:
